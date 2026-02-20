@@ -1,0 +1,13 @@
+# CRE Project Settings
+# Project-level configuration for different deployment targets
+# See: https://docs.chain.link/cre/reference/project-configuration
+
+staging-settings:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: https://ethereum-sepolia-rpc.publicnode.com
+
+production-settings:
+  rpcs:
+    - chain-name: ethereum-testnet-sepolia
+      url: https://ethereum-sepolia-rpc.publicnode.com

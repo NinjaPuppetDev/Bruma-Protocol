@@ -16,8 +16,8 @@ import {
     IRainfallConsumer,
     IPremiumCalculatorCoordinator,
     IPremiumCalculatorConsumer,
-    IWeatherOptionsVault
-} from "./interface/IWeatherOptions.sol";
+    IBrumaVault
+} from "./interface/IBruma.sol";
 
 /**
  * @title WeatherOptionV3 - SECURED VERSION (Backward Compatible)
@@ -112,7 +112,7 @@ contract Bruma is ERC721URIStorage, Ownable, ReentrancyGuard {
     IPremiumCalculatorConsumer public immutable premiumConsumer;
 
     // Vault for liquidity provision and collateral management
-    IWeatherOptionsVault public vault;
+    IBrumaVault public vault;
 
     // WETH for gas-efficient ETH handling
     IWETH public immutable weth;
@@ -232,7 +232,7 @@ contract Bruma is ERC721URIStorage, Ownable, ReentrancyGuard {
         rainfallConsumer = IRainfallConsumer(_rainfallConsumer);
         premiumCoordinator = IPremiumCalculatorCoordinator(_premiumCoordinator);
         premiumConsumer = IPremiumCalculatorConsumer(_premiumConsumer);
-        vault = IWeatherOptionsVault(_vault);
+        vault = IBrumaVault(_vault);
         weth = IWETH(_weth);
     }
 
@@ -600,7 +600,7 @@ contract Bruma is ERC721URIStorage, Ownable, ReentrancyGuard {
      */
     function setVault(address _vault) external onlyOwner {
         address oldVault = address(vault);
-        vault = IWeatherOptionsVault(_vault);
+        vault = IBrumaVault(_vault);
         emit VaultUpdated(oldVault, _vault);
     }
 

@@ -1,0 +1,18 @@
+{
+  "settlementSchedule": "*/5 * * * *",
+  "riskSchedule": "0 * * * *",
+
+  "chainName": "ethereum-testnet-sepolia",
+  "rpcUrl": "https://eth-sepolia.g.alchemy.com/v2/8rnTBOrmLgFWnn-IAsFxK",
+
+  "brumaAddress": "0x762a995182433fDE85dC850Fa8FF6107582110d2",
+  "brumaFactoryAddress": "0xCE425d7Eee6de977c8B07324dE5BdC78354d02Ae",
+  "brumaVaultAddress": "0x681915B4226014045665e4D5d6Bb348eB90cB32f",
+
+  "utilizationAlertBps": 7000,
+  "maxUtilizationBps": 9000,
+
+  "forecastDays": 7,
+
+  "gasLimit": "500000"
+}

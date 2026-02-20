@@ -4,11 +4,12 @@ src = "src"
 out = "out"
 libs = ["lib"]
 optimizer = true
-optimizer_runs = 200 
+optimizer_runs = 200
 evm_version = "cancun"
 
-# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 remappings = [
-  "@chainlink/=lib/chainlink-brownie-contracts/",
-  "@openzeppelin/=lib/openzeppelin-contracts/"
+  "@chainlink/contracts-ccip/=lib/chainlink-ccip/chains/evm/contracts/",
+  "@chainlink/contracts/=lib/chainlink-brownie-contracts/contracts/",
+  "@openzeppelin/contracts@5.0.2/=lib/openzeppelin-contracts/contracts/",
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
 ]
