@@ -22,45 +22,49 @@ import {BrumaCCIPEscrowFactory} from "../src/BrumaCCIPEscrow.sol";
  *   CRE_WORKFLOW_ADDRESS   — CRE workflow EOA / address (authorizedCaller)
  *
  * HARDCODED (Sepolia)
- *   WETH, LINK, CCIP Router — official Chainlink Sepolia addresses
+ *   WETH, CCIP-BnM, LINK, CCIP Router — official Chainlink Sepolia addresses
  */
 contract DeployBrumaFactory is Script {
 
-    // ── Already deployed (from DeployBruma.s.sol) ─────────────────────────────
-    address constant BRUMA_SEPOLIA = 0x762a995182433fDE85dC850Fa8FF6107582110d2; // TODO: fill after deploy
+    // ── Already deployed ──────────────────────────────────────────────────────
+    address constant BRUMA_SEPOLIA = 0x762a995182433fDE85dC850Fa8FF6107582110d2;
 
     // ── Sepolia Chainlink / token addresses ───────────────────────────────────
-    address constant WETH_SEPOLIA   = 0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14;
-    address constant LINK_SEPOLIA   = 0x779877A7B0D9E8603169DdbD7836e478b4624789;
+    address constant WETH_SEPOLIA        = 0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14;
+
+    // CCIP-BnM on Sepolia — the CCIP-supported testnet token for cross-chain transfers
+    // Supported on: Sepolia → Fuji, Sepolia → Amoy, Sepolia → Arbitrum Sepolia, etc.
+    // drip() mints 1 CCIP-BnM for free on testnet
+    address constant CCIP_BNM_SEPOLIA    = 0xFd57b4ddBf88a4e07fF4e34C487b99af2Fe82a05;
+
+    address constant LINK_SEPOLIA        = 0x779877A7B0D9E8603169DdbD7836e478b4624789;
     address constant CCIP_ROUTER_SEPOLIA = 0x0BF3dE8c5D3e8A2B34D2BEeB17ABfCeBaf363A59;
 
     function run() external returns (BrumaCCIPEscrowFactory factory) {
-        // CRE workflow address — the address that will call claimAndBridge()
-        // Set via env so it doesn't need to be hardcoded
-        address creWorkflow = vm.envAddress("CRE_WORKFLOW_ADDRESS");
-
-        // Allow override of Bruma address via env (falls back to constant)
-        address bruma = vm.envOr("BRUMA_ADDRESS", BRUMA_SEPOLIA);
+        address creWorkflow = 0xc022d2263835D14D5AcA7E3f45ADA019D1E23D9e;
+        address bruma       = 0x762a995182433fDE85dC850Fa8FF6107582110d2;
 
         console.log("=== BrumaCCIPEscrowFactory Deployment ===");
         console.log("Network:        Ethereum Sepolia");
         console.log("Bruma:         ", bruma);
         console.log("WETH:          ", WETH_SEPOLIA);
+        console.log("CCIP-BnM:      ", CCIP_BNM_SEPOLIA);
         console.log("LINK:          ", LINK_SEPOLIA);
         console.log("CCIP Router:   ", CCIP_ROUTER_SEPOLIA);
         console.log("CRE Workflow:  ", creWorkflow);
 
-        require(bruma          != address(0), "BRUMA_ADDRESS not set");
-        require(creWorkflow     != address(0), "CRE_WORKFLOW_ADDRESS not set");
+        require(bruma       != address(0), "BRUMA_ADDRESS not set");
+        require(creWorkflow  != address(0), "CRE_WORKFLOW_ADDRESS not set");
 
         vm.startBroadcast();
 
         factory = new BrumaCCIPEscrowFactory(
             bruma,
             WETH_SEPOLIA,
+            CCIP_BNM_SEPOLIA,    // ← new param
             LINK_SEPOLIA,
             CCIP_ROUTER_SEPOLIA,
-            creWorkflow          // authorizedCaller = CRE workflow
+            creWorkflow
         );
 
         vm.stopBroadcast();
@@ -68,6 +72,7 @@ contract DeployBrumaFactory is Script {
         console.log("\n=== Deployment Successful ===");
         console.log("BrumaCCIPEscrowFactory:", address(factory));
         console.log("  bruma:           ", factory.bruma());
+        console.log("  ccipBnM:         ", factory.ccipBnM());
         console.log("  authorizedCaller:", factory.authorizedCaller());
 
         _printNextSteps(address(factory));
@@ -97,7 +102,11 @@ contract DeployBrumaFactory is Script {
         console.log("     <buyer-address> <escrow-address> <tokenId> \\");
         console.log("     --rpc-url $SEPOLIA_RPC --account <buyer-account>");
 
-        console.log("\n5. CRE workflow handles the rest automatically.");
+        console.log("\n5. After settlement, owner withdraws ETH locally:");
+        console.log("   cast send <escrow-address> 'withdrawETH(uint256)' <tokenId> \\");
+        console.log("     --rpc-url $SEPOLIA_RPC --account <buyer-account>");
+
+        console.log("\n6. CRE workflow calls claimAndBridge() to bridge CCIP-BnM cross-chain.");
     }
 
     function _printVerification(
@@ -110,7 +119,7 @@ contract DeployBrumaFactory is Script {
         console.log("  --chain sepolia \\");
         console.log("  --watch \\");
         console.log("  --constructor-args $(cast abi-encode \\");
-        console.log("    'constructor(address,address,address,address,address)' \\");
+        console.log("    'constructor(address,address,address,address,address,address)' \\");
         console.log("  %s \\", factoryAddr);
         console.log("  src/BrumaCCIPEscrow.sol:BrumaCCIPEscrowFactory");
     }

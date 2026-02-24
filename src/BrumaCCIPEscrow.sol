@@ -12,6 +12,12 @@ import {Client} from "@chainlink/contracts-ccip/libraries/Client.sol";
 
 import {IWETH, IBruma, IBrumaCCIPEscrow, IBrumaCCIPEscrowFactory} from "./interface/IBruma.sol";
 
+/// @notice Minimal interface for CCIP-BnM testnet token (has drip() for free minting)
+interface ICCIPBnM is IERC20 {
+    /// @notice Mints 1 CCIP-BnM to `to`. Free on testnet. No-op on mainnet.
+    function drip(address to) external;
+}
+
 /**
  * @title BrumaCCIPEscrow
  * @notice Personal smart wallet that holds Bruma option NFTs on behalf of a cross-chain buyer.
@@ -24,8 +30,17 @@ import {IWETH, IBruma, IBrumaCCIPEscrow, IBrumaCCIPEscrowFactory} from "./interf
  *   So whoever holds the NFT at that moment must be the one to claim.
  *
  *   For cross-chain buyers, that holder is this escrow contract.
- *   The escrow claims ETH, wraps it to WETH, and sends it via CCIP.
+ *   The escrow claims ETH payout, then bridges CCIP-BnM (a CCIP-supported
+ *   token) to represent the payout value on the destination chain.
  *   Bruma.sol is never modified.
+ *
+ * WHY CCIP-BnM INSTEAD OF WETH
+ *   WETH is not whitelisted on the Sepolia → Avalanche Fuji CCIP lane.
+ *   CCIP-BnM (0xFd57b4ddBf88a4e07fF4e34C487b99af2Fe82a05 on Sepolia) is the
+ *   canonical testnet token supported across all Chainlink CCIP testnet lanes.
+ *   On testnet, drip() mints 1 CCIP-BnM for free. The ETH payout is held in
+ *   this escrow and can be withdrawn by the owner separately (or swapped via
+ *   a DEX in a production deployment).
  *
  * USAGE FLOW
  *   1. Cross-chain buyer calls BrumaCCIPEscrowFactory.deployEscrow()
@@ -35,13 +50,19 @@ import {IWETH, IBruma, IBrumaCCIPEscrow, IBrumaCCIPEscrowFactory} from "./interf
  *      requestSettlement() then settle() on Bruma)
  *   5. CRE workflow detects OptionSettled log event
  *   6. CRE workflow calls escrow.claimAndBridge(tokenId)
- *   7. Escrow claims ETH from Bruma, wraps to WETH, sends via CCIP
- *   8. Buyer receives WETH on their native chain via BrumaCCIPReceiver
+ *   7. Escrow claims ETH from Bruma, drips CCIP-BnM, sends via CCIP
+ *   8. Buyer receives CCIP-BnM on their native chain via BrumaCCIPReceiver
+ *   9. Owner can also withdrawETH() to recover the raw ETH payout locally
  *
  * AUTHORIZED CALLERS FOR claimAndBridge()
  *   - escrow owner       the buyer's Ethereum address — always has direct control
  *   - authorizedCaller   the CRE workflow address — enables full automation
  *   - anyone             after PERMISSIONLESS_DELAY (7 days) — funds never get stuck
+ *
+ * PRODUCTION NOTE
+ *   Replace the drip() + fixed 1e18 amount with a DEX swap (e.g. Uniswap V3)
+ *   from ETH → a CCIP-supported production token (e.g. USDC, native LINK).
+ *   The ETH received from Bruma stays in this contract until swapped or withdrawn.
  */
 contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -68,8 +89,13 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
     /// @notice Bruma as ERC721 (NFT transfers)
     IERC721 public immutable brumaERC721;
 
-    /// @notice WETH on this (source) chain
+    /// @notice WETH on this chain (kept for interface compatibility, not used for bridging)
     IWETH public immutable weth;
+
+    /// @notice CCIP-BnM token — the CCIP-supported token used for cross-chain transfer
+    /// @dev    Sepolia:  0xFd57b4ddBf88a4e07fF4e34C487b99af2Fe82a05
+    ///         Fuji:     0xD21341536c5cF5EB1bcb58f6723cE26e8D8E90e4
+    ICCIPBnM public immutable ccipBnM;
 
     /// @notice LINK token for CCIP fee payment
     IERC20 public immutable link;
@@ -83,8 +109,17 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
     /// @notice Gas limit forwarded to BrumaCCIPReceiver on destination chain
     uint256 public constant CCIP_RECEIVER_GAS_LIMIT = 200_000;
 
+    /// @notice Fixed CCIP-BnM amount bridged per settlement (1 token = 1e18)
+    /// @dev    On testnet drip() always mints exactly 1 CCIP-BnM.
+    ///         The actual ETH payout stays in the escrow for local withdrawal.
+    ///         In production, replace with a real swap amount.
+    uint256 public constant CCIP_BNM_BRIDGE_AMOUNT = 1e18;
+
     /// @inheritdoc IBrumaCCIPEscrow
     mapping(uint256 => bool) public override claimed;
+
+    /// @notice ETH payout held per tokenId, claimable by owner via withdrawETH()
+    mapping(uint256 => uint256) public ethPayouts;
 
     /// @notice Internal storage for bridge receipts
     mapping(uint256 => BridgeReceipt) private _bridgeReceipts;
@@ -93,14 +128,15 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
                               EVENTS
     //////////////////////////////////////////////////////////////*/
 
-    event PayoutClaimed(uint256 indexed tokenId, uint256 amount);
+    event PayoutClaimed(uint256 indexed tokenId, uint256 ethAmount);
+    event ETHWithdrawn(uint256 indexed tokenId, address indexed to, uint256 amount);
 
     event BridgeDispatched(
         uint256 indexed tokenId,
         bytes32 indexed ccipMessageId,
         uint64  destinationChain,
         address destinationReceiver,
-        uint256 amount,
+        uint256 ccipBnMAmount,
         uint256 ccipFee
     );
 
@@ -121,6 +157,7 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
     error InsufficientLinkForFees(uint256 required, uint256 available);
     error NotOwnedByEscrow();
     error OnlyBrumaNFTs();
+    error NothingToWithdraw();
 
     /*//////////////////////////////////////////////////////////////
                             CONSTRUCTOR
@@ -128,7 +165,8 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
 
     /**
      * @param _bruma                Bruma options contract address
-     * @param _weth                 WETH address on this chain
+     * @param _weth                 WETH address on this chain (kept for interface compat)
+     * @param _ccipBnM              CCIP-BnM token address on this chain
      * @param _link                 LINK token address on this chain
      * @param _ccipRouter           Chainlink CCIP router on this chain
      * @param _owner                Buyer's address on this (source) chain
@@ -139,6 +177,7 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
     constructor(
         address _bruma,
         address _weth,
+        address _ccipBnM,
         address _link,
         address _ccipRouter,
         address _owner,
@@ -146,16 +185,18 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
         uint64  _destChainSelector,
         address _destReceiver
     ) {
-        require(_bruma != address(0),        "Invalid bruma");
-        require(_weth != address(0),         "Invalid weth");
-        require(_link != address(0),         "Invalid link");
-        require(_ccipRouter != address(0),   "Invalid router");
-        require(_owner != address(0),        "Invalid owner");
+        require(_bruma      != address(0), "Invalid bruma");
+        require(_weth       != address(0), "Invalid weth");
+        require(_ccipBnM    != address(0), "Invalid ccipBnM");
+        require(_link       != address(0), "Invalid link");
+        require(_ccipRouter != address(0), "Invalid router");
+        require(_owner      != address(0), "Invalid owner");
         require(_destReceiver != address(0), "Invalid dest receiver");
 
         bruma                    = IBruma(_bruma);
         brumaERC721              = IERC721(_bruma);
         weth                     = IWETH(_weth);
+        ccipBnM                  = ICCIPBnM(_ccipBnM);
         link                     = IERC20(_link);
         ccipRouter               = IRouterClient(_ccipRouter);
         owner                    = _owner;
@@ -169,8 +210,9 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
 
     /**
-     * @notice Claim ETH payout from Bruma and bridge WETH to buyer on destination chain.
+     * @notice Claim ETH payout from Bruma and bridge CCIP-BnM to buyer on destination chain.
      * @dev Called by CRE workflow after detecting OptionSettled event, or directly by owner.
+     *      ETH payout is held in escrow; owner can withdraw via withdrawETH().
      * @param tokenId The Bruma option NFT token ID
      */
     function claimAndBridge(uint256 tokenId) external override nonReentrant {
@@ -192,6 +234,39 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
         uint256 availableAt = settledAt + PERMISSIONLESS_DELAY;
         if (block.timestamp < availableAt) revert PermissionlessDelayNotPassed(availableAt);
         _claimAndBridge(tokenId);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                          ETH WITHDRAWAL
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @notice Withdraw ETH payout held in escrow after claimAndBridge completes.
+     * @dev The ETH from Bruma.claimPayout() stays here since we bridge CCIP-BnM
+     *      instead. Owner calls this to recover the ETH locally on Sepolia.
+     *      In a production deployment with a real DEX swap, this would not be needed.
+     * @param tokenId The option token ID whose ETH payout to withdraw
+     */
+    function withdrawETH(uint256 tokenId) external nonReentrant {
+        require(msg.sender == owner, "Only owner");
+        uint256 amount = ethPayouts[tokenId];
+        if (amount == 0) revert NothingToWithdraw();
+        ethPayouts[tokenId] = 0;
+        (bool ok,) = payable(owner).call{value: amount}("");
+        require(ok, "ETH transfer failed");
+        emit ETHWithdrawn(tokenId, owner, amount);
+    }
+
+    /**
+     * @notice Withdraw any ETH held in the contract not tracked per-tokenId.
+     * @dev Safety escape hatch for ETH sent directly to the contract.
+     */
+    function withdrawAllETH() external nonReentrant {
+        require(msg.sender == owner, "Only owner");
+        uint256 amount = address(this).balance;
+        if (amount == 0) revert NothingToWithdraw();
+        (bool ok,) = payable(owner).call{value: amount}("");
+        require(ok, "ETH transfer failed");
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -231,7 +306,6 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
 
     /**
      * @notice Deposit LINK to cover future CCIP bridging fees.
-     * @dev Anyone can fund. Typical cost is 0.5–2 LINK per bridge depending on chain pair.
      * @param amount LINK amount to deposit
      */
     function fundLink(uint256 amount) external {
@@ -254,15 +328,16 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
 
     /// @inheritdoc IBrumaCCIPEscrow
-    function estimateCCIPFee(uint256 payoutAmount)
+    function estimateCCIPFee(uint256 /* payoutAmount */)
         external
         view
         override
         returns (uint256 linkFee)
     {
+        // Fee is based on CCIP-BnM amount, not ETH payout amount
         return ccipRouter.getFee(
             destinationChainSelector,
-            _buildCCIPMessage(payoutAmount, 0)
+            _buildCCIPMessage(CCIP_BNM_BRIDGE_AMOUNT, 0)
         );
     }
 
@@ -289,13 +364,19 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
 
     /**
      * @dev Core logic. CEI pattern: state written before all external calls.
+     *
+     *      Flow:
+     *        1. Claim ETH from Bruma → store in ethPayouts[tokenId]
+     *        2. Drip 1 CCIP-BnM to this contract (testnet free mint)
+     *        3. Bridge CCIP-BnM via CCIP to destination chain
+     *        4. Owner can withdrawETH(tokenId) separately to recover ETH
      */
     function _claimAndBridge(uint256 tokenId) internal {
-        // ── Guards ─────────────────────────────────────────────────────────────
+        // ── Guards ────────────────────────────────────────────────────────────
         if (claimed[tokenId]) revert AlreadyClaimed();
         if (brumaERC721.ownerOf(tokenId) != address(this)) revert NotOwnedByEscrow();
 
-        // ── CEI: mark claimed BEFORE any external call ─────────────────────────
+        // ── CEI: mark claimed BEFORE any external call ────────────────────────
         claimed[tokenId] = true;
 
         // ── Short-circuit: out-of-the-money options have no payout ─────────────
@@ -305,36 +386,38 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
             return;
         }
 
-        // ── Claim ETH from Bruma ───────────────────────────────────────────────
-        // Bruma checks: msg.sender == ownerAtSettlement
-        // ownerAtSettlement was snapshotted as address(this) at requestSettlement() ✓
+        // ── Step 1: Claim ETH from Bruma ──────────────────────────────────────
+        // Bruma enforces: msg.sender == ownerAtSettlement == address(this) ✓
         uint256 ethBefore = address(this).balance;
         bruma.claimPayout(tokenId);
         uint256 received = address(this).balance - ethBefore;
         if (received == 0) revert NoPayoutAvailable();
 
+        // Store ETH so owner can withdraw it locally via withdrawETH()
+        ethPayouts[tokenId] = received;
         emit PayoutClaimed(tokenId, received);
 
-        // ── Wrap ETH → WETH for CCIP transfer ─────────────────────────────────
-        weth.deposit{value: received}();
+        // ── Step 2: Drip CCIP-BnM to this contract ────────────────────────────
+        // drip() is a free testnet mint — gives exactly 1 CCIP-BnM (1e18)
+        // In production: replace with a DEX swap of ETH → supported CCIP token
+        ccipBnM.drip(address(this));
 
-        // ── Build CCIP message and calculate fee ───────────────────────────────
-        Client.EVM2AnyMessage memory message = _buildCCIPMessage(received, tokenId);
-        uint256 ccipFee = ccipRouter.getFee(destinationChainSelector, message);
+        // ── Step 3: Build CCIP message and check fee ──────────────────────────
+        Client.EVM2AnyMessage memory message = _buildCCIPMessage(CCIP_BNM_BRIDGE_AMOUNT, tokenId);
+        uint256 ccipFee     = ccipRouter.getFee(destinationChainSelector, message);
         uint256 currentLink = link.balanceOf(address(this));
-
         if (currentLink < ccipFee) revert InsufficientLinkForFees(ccipFee, currentLink);
 
-        // ── Approve router and dispatch ────────────────────────────────────────
-        IERC20(address(weth)).forceApprove(address(ccipRouter), received);
+        // ── Step 4: Approve router and dispatch ──────────────────────────────
+        IERC20(address(ccipBnM)).forceApprove(address(ccipRouter), CCIP_BNM_BRIDGE_AMOUNT);
         link.forceApprove(address(ccipRouter), ccipFee);
 
         bytes32 messageId = ccipRouter.ccipSend(destinationChainSelector, message);
 
-        // ── Store receipt ──────────────────────────────────────────────────────
+        // ── Step 5: Store receipt ─────────────────────────────────────────────
         _bridgeReceipts[tokenId] = BridgeReceipt({
             messageId:           messageId,
-            amount:              received,
+            amount:              CCIP_BNM_BRIDGE_AMOUNT,
             timestamp:           block.timestamp,
             destinationChain:    destinationChainSelector,
             destinationReceiver: destinationReceiver
@@ -345,23 +428,23 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
             messageId,
             destinationChainSelector,
             destinationReceiver,
-            received,
+            CCIP_BNM_BRIDGE_AMOUNT,
             ccipFee
         );
     }
 
     /**
-     * @dev Constructs the CCIP EVM2AnyMessage.
+     * @dev Constructs the CCIP EVM2AnyMessage using CCIP-BnM as the bridged token.
      *      tokenId is packed into data so BrumaCCIPReceiver can emit indexed events.
      */
     function _buildCCIPMessage(
-        uint256 wethAmount,
+        uint256 bnmAmount,
         uint256 tokenId
     ) internal view returns (Client.EVM2AnyMessage memory) {
         Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](1);
         tokenAmounts[0] = Client.EVMTokenAmount({
-            token:  address(weth),
-            amount: wethAmount
+            token:  address(ccipBnM),   // ← CCIP-BnM, not WETH
+            amount: bnmAmount
         });
 
         return Client.EVM2AnyMessage({
@@ -407,28 +490,28 @@ contract BrumaCCIPEscrowFactory is IBrumaCCIPEscrowFactory {
     /// @inheritdoc IBrumaCCIPEscrowFactory
     address public immutable override bruma;
     address public immutable weth;
+
+    /// @notice CCIP-BnM token address on Sepolia
+    /// @dev    0xFd57b4ddBf88a4e07fF4e34C487b99af2Fe82a05
+    address public immutable ccipBnM;
+
     address public immutable link;
     address public immutable ccipRouter;
 
     /// @inheritdoc IBrumaCCIPEscrowFactory
-    /// @dev This is the CRE workflow EOA or contract — injected into every escrow
     address public immutable override authorizedCaller;
 
     /*//////////////////////////////////////////////////////////////
                               STATE
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice All escrows per owner (frontend convenience, not used by CRE)
     mapping(address => address[]) public escrowsByOwner;
-
-    /// @notice Reverse-lookup used by CRE workflow to validate ownerAtSettlement
     mapping(address => bool) public isRegisteredEscrow;
 
     /*//////////////////////////////////////////////////////////////
                               EVENTS
     //////////////////////////////////////////////////////////////*/
 
-    // EscrowDeployed inherited from IBrumaCCIPEscrowFactory
     event EscrowFunded(address indexed escrow, uint256 linkAmount);
 
     /*//////////////////////////////////////////////////////////////
@@ -445,18 +528,21 @@ contract BrumaCCIPEscrowFactory is IBrumaCCIPEscrowFactory {
     constructor(
         address _bruma,
         address _weth,
+        address _ccipBnM,
         address _link,
         address _ccipRouter,
         address _authorizedCaller
     ) {
-        require(_bruma != address(0),            "Invalid bruma");
-        require(_weth != address(0),             "Invalid weth");
-        require(_link != address(0),             "Invalid link");
-        require(_ccipRouter != address(0),       "Invalid router");
+        require(_bruma            != address(0), "Invalid bruma");
+        require(_weth             != address(0), "Invalid weth");
+        require(_ccipBnM          != address(0), "Invalid ccipBnM");
+        require(_link             != address(0), "Invalid link");
+        require(_ccipRouter       != address(0), "Invalid router");
         require(_authorizedCaller != address(0), "Invalid caller");
 
         bruma            = _bruma;
         weth             = _weth;
+        ccipBnM          = _ccipBnM;
         link             = _link;
         ccipRouter       = _ccipRouter;
         authorizedCaller = _authorizedCaller;
@@ -468,10 +554,6 @@ contract BrumaCCIPEscrowFactory is IBrumaCCIPEscrowFactory {
 
     /**
      * @notice Deploy a personal escrow for a cross-chain buyer.
-     * @dev Call this BEFORE purchasing any Bruma options.
-     *      After deployment:
-     *        1. Fund escrow with LINK via fundLink() or deployAndFundEscrow()
-     *        2. Transfer each purchased Bruma NFT to the escrow address
      *
      * @param _destChainSelector  CCIP chain selector for buyer's home chain
      *                            Avalanche Fuji testnet : 14767482510784806043
@@ -484,12 +566,13 @@ contract BrumaCCIPEscrowFactory is IBrumaCCIPEscrowFactory {
         uint64  _destChainSelector,
         address _destReceiver
     ) public override returns (address escrow) {
-        if (_destReceiver == address(0)) revert InvalidDestinationReceiver();
-        if (_destChainSelector == 0)     revert InvalidDestinationChain();
+        if (_destReceiver    == address(0)) revert InvalidDestinationReceiver();
+        if (_destChainSelector == 0)        revert InvalidDestinationChain();
 
         escrow = address(new BrumaCCIPEscrow(
             bruma,
             weth,
+            ccipBnM,        // ← new param
             link,
             ccipRouter,
             msg.sender,
@@ -506,13 +589,6 @@ contract BrumaCCIPEscrowFactory is IBrumaCCIPEscrowFactory {
 
     /**
      * @notice Deploy escrow and fund with LINK in one transaction.
-     * @dev Saves buyers from a separate fundLink() call.
-     *      Caller must have approved this factory to spend `linkAmount` LINK.
-     *
-     * @param _destChainSelector  CCIP chain selector for destination
-     * @param _destReceiver       BrumaCCIPReceiver on destination chain
-     * @param linkAmount          LINK to pre-deposit for CCIP fees
-     * @return escrow             Deployed and funded escrow address
      */
     function deployAndFundEscrow(
         uint64  _destChainSelector,
@@ -520,7 +596,6 @@ contract BrumaCCIPEscrowFactory is IBrumaCCIPEscrowFactory {
         uint256 linkAmount
     ) external returns (address escrow) {
         escrow = deployEscrow(_destChainSelector, _destReceiver);
-
         if (linkAmount > 0) {
             IERC20(link).safeTransferFrom(msg.sender, escrow, linkAmount);
             emit EscrowFunded(escrow, linkAmount);
@@ -531,9 +606,6 @@ contract BrumaCCIPEscrowFactory is IBrumaCCIPEscrowFactory {
                               VIEW
     //////////////////////////////////////////////////////////////*/
 
-    /**
-     * @notice Get all escrow addresses deployed by an owner.
-     */
     function getEscrowsByOwner(address _owner) external view returns (address[] memory) {
         return escrowsByOwner[_owner];
     }

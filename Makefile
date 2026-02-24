@@ -56,7 +56,7 @@ cast send 0xf322B700c27a8C527F058f48481877855bD84F6e \
 
   ## Deploy Bruma
 
-  forge script script/DeployBruma.s.sol:DeployBruma --rpc-url https://eth-sepolia.g.alchemy.com/v2/8rnTBOrmLgFWnn-IAsFxK --account rainfall-deployer --broadcast --verify SH6TUFNGYM3S2PE9I6C8NJH6WHF7A9P2ZB
+  forge script script/DeployBruma.s.sol:DeployBruma --rpc-url $RPC --account rainfall-deployer --broadcast --verify SH6TUFNGYM3S2PE9I6C8NJH6WHF7A9P2ZB
 
 
 ## Contract Addresses (Sepolia)
@@ -67,7 +67,7 @@ export VAULT=0x681915B4226014045665e4D5d6Bb348eB90cB32f
 export WETH=0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14
 export PREMIUM_CONSUMER=0xEB36260fc0647D9ca4b67F40E1310697074897d4
 export DEPLOYER=0xc022d2263835D14D5AcA7E3f45ADA019D1E23D9e
-export RPC=https://eth-sepolia.g.alchemy.com/v2/8rnTBOrmLgFWnn-IAsFxK
+export RPC=https://eth-sepolia.g.alchemy.com/v2/lmeow
 ```
 ## VAULT OPERATIONS
 

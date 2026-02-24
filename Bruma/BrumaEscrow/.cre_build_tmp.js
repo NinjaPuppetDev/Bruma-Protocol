@@ -6721,6 +6721,37 @@ class ClientLogTrigger {
     return rawOutput;
   }
 }
+var file_capabilities_networking_confidentialhttp_v1alpha_client = /* @__PURE__ */ fileDesc("Cj1jYXBhYmlsaXRpZXMvbmV0d29ya2luZy9jb25maWRlbnRpYWxodHRwL3YxYWxwaGEvY2xpZW50LnByb3RvEjBjYXBhYmlsaXRpZXMubmV0d29ya2luZy5jb25maWRlbnRpYWxodHRwLnYxYWxwaGEiUAoQU2VjcmV0SWRlbnRpZmllchILCgNrZXkYASABKAkSEQoJbmFtZXNwYWNlGAIgASgJEhIKBW93bmVyGAMgASgJSACIAQFCCAoGX293bmVyIh4KDEhlYWRlclZhbHVlcxIOCgZ2YWx1ZXMYASADKAki1wQKC0hUVFBSZXF1ZXN0EgsKA3VybBgBIAEoCRIOCgZtZXRob2QYAiABKAkSFQoLYm9keV9zdHJpbmcYAyABKAlIABIUCgpib2R5X2J5dGVzGAggASgMSAASZgoNbXVsdGlfaGVhZGVycxgEIAMoCzJPLmNhcGFiaWxpdGllcy5uZXR3b3JraW5nLmNvbmZpZGVudGlhbGh0dHAudjFhbHBoYS5IVFRQUmVxdWVzdC5NdWx0aUhlYWRlcnNFbnRyeRJ3ChZ0ZW1wbGF0ZV9wdWJsaWNfdmFsdWVzGAUgAygLMlcuY2FwYWJpbGl0aWVzLm5ldHdvcmtpbmcuY29uZmlkZW50aWFsaHR0cC52MWFscGhhLkhUVFBSZXF1ZXN0LlRlbXBsYXRlUHVibGljVmFsdWVzRW50cnkSHwoXY3VzdG9tX3Jvb3RfY2FfY2VydF9wZW0YBiABKAwSKgoHdGltZW91dBgHIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbhIWCg5lbmNyeXB0X291dHB1dBgJIAEoCBpzChFNdWx0aUhlYWRlcnNFbnRyeRILCgNrZXkYASABKAkSTQoFdmFsdWUYAiABKAsyPi5jYXBhYmlsaXRpZXMubmV0d29ya2luZy5jb25maWRlbnRpYWxodHRwLnYxYWxwaGEuSGVhZGVyVmFsdWVzOgI4ARo7ChlUZW1wbGF0ZVB1YmxpY1ZhbHVlc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAFCBgoEYm9keSKPAgoMSFRUUFJlc3BvbnNlEhMKC3N0YXR1c19jb2RlGAEgASgNEgwKBGJvZHkYAiABKAwSZwoNbXVsdGlfaGVhZGVycxgDIAMoCzJQLmNhcGFiaWxpdGllcy5uZXR3b3JraW5nLmNvbmZpZGVudGlhbGh0dHAudjFhbHBoYS5IVFRQUmVzcG9uc2UuTXVsdGlIZWFkZXJzRW50cnkacwoRTXVsdGlIZWFkZXJzRW50cnkSCwoDa2V5GAEgASgJEk0KBXZhbHVlGAIgASgLMj4uY2FwYWJpbGl0aWVzLm5ldHdvcmtpbmcuY29uZmlkZW50aWFsaHR0cC52MWFscGhhLkhlYWRlclZhbHVlczoCOAEiyAEKF0NvbmZpZGVudGlhbEhUVFBSZXF1ZXN0El0KEXZhdWx0X2Rvbl9zZWNyZXRzGAEgAygLMkIuY2FwYWJpbGl0aWVzLm5ldHdvcmtpbmcuY29uZmlkZW50aWFsaHR0cC52MWFscGhhLlNlY3JldElkZW50aWZpZXISTgoHcmVxdWVzdBgCIAEoCzI9LmNhcGFiaWxpdGllcy5uZXR3b3JraW5nLmNvbmZpZGVudGlhbGh0dHAudjFhbHBoYS5IVFRQUmVxdWVzdDLKAQoGQ2xpZW50EpgBCgtTZW5kUmVxdWVzdBJJLmNhcGFiaWxpdGllcy5uZXR3b3JraW5nLmNvbmZpZGVudGlhbGh0dHAudjFhbHBoYS5Db25maWRlbnRpYWxIVFRQUmVxdWVzdBo+LmNhcGFiaWxpdGllcy5uZXR3b3JraW5nLmNvbmZpZGVudGlhbGh0dHAudjFhbHBoYS5IVFRQUmVzcG9uc2UaJYK1GCEIARIdY29uZmlkZW50aWFsLWh0dHBAMS4wLjAtYWxwaGFCpgIKNGNvbS5jYXBhYmlsaXRpZXMubmV0d29ya2luZy5jb25maWRlbnRpYWxodHRwLnYxYWxwaGFCC0NsaWVudFByb3RvUAGiAgNDTkOqAjBDYXBhYmlsaXRpZXMuTmV0d29ya2luZy5Db25maWRlbnRpYWxodHRwLlYxYWxwaGHKAjBDYXBhYmlsaXRpZXNcTmV0d29ya2luZ1xDb25maWRlbnRpYWxodHRwXFYxYWxwaGHiAjxDYXBhYmlsaXRpZXNcTmV0d29ya2luZ1xDb25maWRlbnRpYWxodHRwXFYxYWxwaGFcR1BCTWV0YWRhdGHqAjNDYXBhYmlsaXRpZXM6Ok5ldHdvcmtpbmc6OkNvbmZpZGVudGlhbGh0dHA6OlYxYWxwaGFiBnByb3RvMw", [file_google_protobuf_duration, file_tools_generator_v1alpha_cre_metadata]);
+var HTTPResponseSchema = /* @__PURE__ */ messageDesc(file_capabilities_networking_confidentialhttp_v1alpha_client, 3);
+var ConfidentialHTTPRequestSchema = /* @__PURE__ */ messageDesc(file_capabilities_networking_confidentialhttp_v1alpha_client, 4);
+
+class ClientCapability2 {
+  static CAPABILITY_ID = "confidential-http@1.0.0-alpha";
+  static CAPABILITY_NAME = "confidential-http";
+  static CAPABILITY_VERSION = "1.0.0-alpha";
+  sendRequest(runtime, input) {
+    let payload;
+    if (input.$typeName) {
+      payload = input;
+    } else {
+      payload = fromJson(ConfidentialHTTPRequestSchema, input);
+    }
+    const capabilityId = ClientCapability2.CAPABILITY_ID;
+    const capabilityResponse = runtime.callCapability({
+      capabilityId,
+      method: "SendRequest",
+      payload,
+      inputSchema: ConfidentialHTTPRequestSchema,
+      outputSchema: HTTPResponseSchema
+    });
+    return {
+      result: () => {
+        const result = capabilityResponse.result();
+        return result;
+      }
+    };
+  }
+}
 var file_capabilities_networking_http_v1alpha_client = /* @__PURE__ */ fileDesc("CjFjYXBhYmlsaXRpZXMvbmV0d29ya2luZy9odHRwL3YxYWxwaGEvY2xpZW50LnByb3RvEiRjYXBhYmlsaXRpZXMubmV0d29ya2luZy5odHRwLnYxYWxwaGEiSgoNQ2FjaGVTZXR0aW5ncxINCgVzdG9yZRgBIAEoCBIqCgdtYXhfYWdlGAIgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uIh4KDEhlYWRlclZhbHVlcxIOCgZ2YWx1ZXMYASADKAki7wMKB1JlcXVlc3QSCwoDdXJsGAEgASgJEg4KBm1ldGhvZBgCIAEoCRJPCgdoZWFkZXJzGAMgAygLMjouY2FwYWJpbGl0aWVzLm5ldHdvcmtpbmcuaHR0cC52MWFscGhhLlJlcXVlc3QuSGVhZGVyc0VudHJ5QgIYARIMCgRib2R5GAQgASgMEioKB3RpbWVvdXQYBSABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb24SSwoOY2FjaGVfc2V0dGluZ3MYBiABKAsyMy5jYXBhYmlsaXRpZXMubmV0d29ya2luZy5odHRwLnYxYWxwaGEuQ2FjaGVTZXR0aW5ncxJWCg1tdWx0aV9oZWFkZXJzGAcgAygLMj8uY2FwYWJpbGl0aWVzLm5ldHdvcmtpbmcuaHR0cC52MWFscGhhLlJlcXVlc3QuTXVsdGlIZWFkZXJzRW50cnkaLgoMSGVhZGVyc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEaZwoRTXVsdGlIZWFkZXJzRW50cnkSCwoDa2V5GAEgASgJEkEKBXZhbHVlGAIgASgLMjIuY2FwYWJpbGl0aWVzLm5ldHdvcmtpbmcuaHR0cC52MWFscGhhLkhlYWRlclZhbHVlczoCOAEi8QIKCFJlc3BvbnNlEhMKC3N0YXR1c19jb2RlGAEgASgNElAKB2hlYWRlcnMYAiADKAsyOy5jYXBhYmlsaXRpZXMubmV0d29ya2luZy5odHRwLnYxYWxwaGEuUmVzcG9uc2UuSGVhZGVyc0VudHJ5QgIYARIMCgRib2R5GAMgASgMElcKDW11bHRpX2hlYWRlcnMYBCADKAsyQC5jYXBhYmlsaXRpZXMubmV0d29ya2luZy5odHRwLnYxYWxwaGEuUmVzcG9uc2UuTXVsdGlIZWFkZXJzRW50cnkaLgoMSGVhZGVyc0VudHJ5EgsKA2tleRgBIAEoCRINCgV2YWx1ZRgCIAEoCToCOAEaZwoRTXVsdGlIZWFkZXJzRW50cnkSCwoDa2V5GAEgASgJEkEKBXZhbHVlGAIgASgLMjIuY2FwYWJpbGl0aWVzLm5ldHdvcmtpbmcuaHR0cC52MWFscGhhLkhlYWRlclZhbHVlczoCOAEymAEKBkNsaWVudBJsCgtTZW5kUmVxdWVzdBItLmNhcGFiaWxpdGllcy5uZXR3b3JraW5nLmh0dHAudjFhbHBoYS5SZXF1ZXN0Gi4uY2FwYWJpbGl0aWVzLm5ldHdvcmtpbmcuaHR0cC52MWFscGhhLlJlc3BvbnNlGiCCtRgcCAISGGh0dHAtYWN0aW9uc0AxLjAuMC1hbHBoYULqAQooY29tLmNhcGFiaWxpdGllcy5uZXR3b3JraW5nLmh0dHAudjFhbHBoYUILQ2xpZW50UHJvdG9QAaICA0NOSKoCJENhcGFiaWxpdGllcy5OZXR3b3JraW5nLkh0dHAuVjFhbHBoYcoCJENhcGFiaWxpdGllc1xOZXR3b3JraW5nXEh0dHBcVjFhbHBoYeICMENhcGFiaWxpdGllc1xOZXR3b3JraW5nXEh0dHBcVjFhbHBoYVxHUEJNZXRhZGF0YeoCJ0NhcGFiaWxpdGllczo6TmV0d29ya2luZzo6SHR0cDo6VjFhbHBoYWIGcHJvdG8z", [file_google_protobuf_duration, file_tools_generator_v1alpha_cre_metadata]);
 var RequestSchema = /* @__PURE__ */ messageDesc(file_capabilities_networking_http_v1alpha_client, 2);
 var ResponseSchema = /* @__PURE__ */ messageDesc(file_capabilities_networking_http_v1alpha_client, 3);
@@ -6737,7 +6768,7 @@ class SendRequester {
   }
 }
 
-class ClientCapability2 {
+class ClientCapability3 {
   static CAPABILITY_ID = "http-actions@1.0.0-alpha";
   static CAPABILITY_NAME = "http-actions";
   static CAPABILITY_VERSION = "1.0.0-alpha";
@@ -6756,7 +6787,7 @@ class ClientCapability2 {
     } else {
       payload = fromJson(RequestSchema, input);
     }
-    const capabilityId = ClientCapability2.CAPABILITY_ID;
+    const capabilityId = ClientCapability3.CAPABILITY_ID;
     const capabilityResponse = runtime.callCapability({
       capabilityId,
       method: "SendRequest",
@@ -8157,6 +8188,28 @@ var encodeCallMsg = (payload) => ({
   to: hexToBase64(payload.to),
   data: hexToBase64(payload.data)
 });
+var decodeJson = (input) => {
+  const decoder = new TextDecoder("utf-8");
+  const textBody = decoder.decode(input);
+  return JSON.parse(textBody);
+};
+function json(responseOrFn) {
+  if (typeof responseOrFn === "function") {
+    return {
+      result: () => json(responseOrFn().result)
+    };
+  }
+  return decodeJson(responseOrFn.body);
+}
+function ok(responseOrFn) {
+  if (typeof responseOrFn === "function") {
+    return {
+      result: () => ok(responseOrFn().result)
+    };
+  } else {
+    return responseOrFn.statusCode >= 200 && responseOrFn.statusCode < 300;
+  }
+}
 function sendReport(runtime, report, fn) {
   const rawReport = report.x_generatedCodeOnly_unwrap();
   const request = fn(rawReport);
@@ -8167,7 +8220,7 @@ function sendRequesterSendReport(report, fn) {
   const request = fn(rawReport);
   return this.sendRequest(request);
 }
-ClientCapability2.prototype.sendReport = sendReport;
+ClientCapability3.prototype.sendReport = sendReport;
 SendRequester.prototype.sendReport = sendRequesterSendReport;
 var network = {
   chainId: "1",
@@ -12427,8 +12480,8 @@ var ZodIssueCode = util.arrayToEnum([
   "not_finite"
 ]);
 var quotelessJson = (obj) => {
-  const json = JSON.stringify(obj, null, 2);
-  return json.replace(/"([^"]+)":/g, "$1:");
+  const json2 = JSON.stringify(obj, null, 2);
+  return json2.replace(/"([^"]+)":/g, "$1:");
 };
 
 class ZodError extends Error {
@@ -16712,12 +16765,6 @@ var sendErrorResponse = (error) => {
   }
   hostBindings.sendResponse(payload);
 };
-init_exports();
-var zeroAddress = "0x0000000000000000000000000000000000000000";
-init_decodeFunctionResult();
-init_encodeAbiParameters();
-init_encodeFunctionData();
-init_toBytes();
 var BRUMA_ABI = [
   {
     name: "getActiveOptions",
@@ -16851,6 +16898,12 @@ var OptionStatus = {
   Settling: 2,
   Settled: 3
 };
+init_exports();
+var zeroAddress = "0x0000000000000000000000000000000000000000";
+init_decodeFunctionResult();
+init_encodeAbiParameters();
+init_encodeFunctionData();
+init_toBytes();
 function ethCall(runtime2, evmClient, address, abi, functionName, args = []) {
   const callData = encodeFunctionData({ abi, functionName, args });
   const reply = evmClient.callContract(runtime2, {
@@ -16977,7 +17030,7 @@ var onSettlementCron = (runtime2) => {
   return summary;
 };
 var fetchForecastRainfall = (nodeRuntime, lat, lon, forecastDays) => {
-  const httpClient = new ClientCapability2;
+  const httpClient = new ClientCapability3;
   const url = `https://api.open-meteo.com/v1/forecast` + `?latitude=${lat}&longitude=${lon}` + `&daily=precipitation_sum` + `&forecast_days=${forecastDays}` + `&timezone=UTC`;
   const resp = httpClient.sendRequest(nodeRuntime, { url, method: "GET" }).result();
   const body = new TextDecoder().decode(resp.body);
@@ -16985,6 +17038,50 @@ var fetchForecastRainfall = (nodeRuntime, lat, lon, forecastDays) => {
   if (!data?.daily?.precipitation_sum)
     return 0;
   return data.daily.precipitation_sum.filter((v) => typeof v === "number" && isFinite(v)).reduce((sum, v) => sum + v, 0);
+};
+var fetchGroqRiskSummary = (sendRequester, params) => {
+  const tvlEth = (Number(params.tvl) / 1000000000000000000).toFixed(4);
+  const pnlEth = (Number(params.netPnL) / 1000000000000000000).toFixed(4);
+  const pnlSign = Number(params.netPnL) >= 0 ? "+" : "";
+  const prompt = `You are a risk analyst for a parametric rainfall insurance protocol. ` + `Summarize the vault risk in 2-3 sentences for the operations team. ` + `All monetary values are in ETH. Do not convert to USD or any other currency.
+
+` + `Vault metrics:
+` + `- TVL: ${tvlEth} ETH
+` + `- Current utilization: ${params.currentUtilBps / 100}%
+` + `- Expected loss (forecast): ${params.expectedLossBps / 100}% of TVL
+` + `- Active options: ${params.activeOptionsCount} across ${params.uniqueLocations} locations
+` + `- Net PnL: ${pnlSign}${pnlEth} ETH
+` + `- Alert threshold: ${params.alertThresholdBps / 100}%`;
+  const response = sendRequester.sendRequest({
+    request: {
+      url: "https://api.groq.com/openai/v1/chat/completions",
+      method: "POST",
+      multiHeaders: {
+        Authorization: { values: ["Bearer {{.groqApiKey}}"] },
+        "Content-Type": { values: ["application/json"] }
+      },
+      bodyString: JSON.stringify({
+        model: "groq/compound",
+        messages: [{ role: "user", content: prompt }],
+        max_completion_tokens: 1024,
+        temperature: 1,
+        top_p: 1,
+        stream: false,
+        stop: null,
+        compound_custom: {
+          tools: {
+            enabled_tools: ["web_search", "code_interpreter", "visit_website"]
+          }
+        }
+      })
+    },
+    vaultDonSecrets: [{ key: "groqApiKey" }]
+  }).result();
+  if (!ok(response)) {
+    throw new Error(`Groq API failed with status: ${response.statusCode}`);
+  }
+  const result = json(response);
+  return result.choices[0].message.content;
 };
 var onRiskCron = (runtime2) => {
   const { config } = runtime2;
@@ -17029,14 +17126,33 @@ var onRiskCron = (runtime2) => {
   runtime2.log(`Expected loss across ${activeOptions.length} options: ` + `${totalExpectedLoss.toString()} wei`);
   const expectedLossBps = tvl > 0n ? Number(totalExpectedLoss * 10000n / tvl) : 0;
   runtime2.log(`Expected loss as % of TVL: ${expectedLossBps / 100}% | ` + `Alert threshold: ${config.utilizationAlertBps / 100}%`);
+  let riskSummary = "";
+  try {
+    const groqParams = {
+      tvl: tvl.toString(),
+      currentUtilBps,
+      expectedLossBps,
+      activeOptionsCount: activeOptions.length,
+      uniqueLocations: locationsSeen.size,
+      netPnL: netPnL.toString(),
+      alertThresholdBps: config.utilizationAlertBps
+    };
+    const confHTTPClient = new ClientCapability2;
+    riskSummary = fetchGroqRiskSummary({ sendRequest: (req) => confHTTPClient.sendRequest(runtime2, req) }, groqParams);
+    runtime2.log(`Groq risk summary: ${riskSummary}`);
+  } catch (e) {
+    runtime2.log(`Groq summary skipped: ${e.message}`);
+  }
   if (currentUtilBps >= config.utilizationAlertBps || expectedLossBps >= config.utilizationAlertBps) {
     const newMaxBps = config.maxUtilizationBps;
     const newTargetBps = Math.round(newMaxBps * 0.75);
-    runtime2.log(`⚠️  Risk threshold breached! ` + `Tightening vault to ${newMaxBps / 100}% max, ${newTargetBps / 100}% target...`);
+    runtime2.log(`Risk threshold breached! ` + `Tightening vault to ${newMaxBps / 100}% max, ${newTargetBps / 100}% target...`);
     ethWrite(runtime2, evmClient, config.brumaVaultAddress, VAULT_ABI, "setUtilizationLimits", [BigInt(newMaxBps), BigInt(newTargetBps)], config.gasLimit);
-    return `RISK ACTION TAKEN: vault tightened to ${newMaxBps / 100}% max. ` + `Expected loss: ${expectedLossBps / 100}% of TVL across ` + `${locationsSeen.size} unique locations.`;
+    return `RISK ACTION TAKEN: vault tightened to ${newMaxBps / 100}% max. ` + `Expected loss: ${expectedLossBps / 100}% of TVL across ` + `${locationsSeen.size} unique locations.
+` + (riskSummary ? `Summary: ${riskSummary}` : "");
   }
-  return `Vault healthy. Utilization: ${currentUtilBps / 100}%. ` + `Expected loss: ${expectedLossBps / 100}% of TVL. No action needed.`;
+  return `Vault healthy. Utilization: ${currentUtilBps / 100}%. ` + `Expected loss: ${expectedLossBps / 100}% of TVL. No action needed.
+` + (riskSummary ? `Summary: ${riskSummary}` : "");
 };
 var initWorkflow = (config) => {
   const settlementCron = new CronCapability;
