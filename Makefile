@@ -1,238 +1,390 @@
-# SETUP
+# ============================================================
+#  Bruma — Deployment & Operations Makefile
+#  Usage: make <target>
+#  Requires: forge, cast, jq
+# ============================================================
 
-export WEATHER_OPTION=0xac46BC205d962FD0d1aBa3FEf291f90bCf52db82
-export DEPLOYER=0xc022d2263835D14D5AcA7E3f45ADA019D1E23D9e
-export COORDINATOR=0x58079Fd1c9BCdbe91eD4c83E1bE196B5FFBa62e6
-export RPC_URL="your-rpc"
-account: your-deployer
+# ── Load .env if present ─────────────────────────────────────
+-include .env
+export
 
+# ── Required env vars ────────────────────────────────────────
+RPC          ?= https://eth-sepolia.g.alchemy.com/v2/8rnTBOrmLgFWnn-IAsFxK
+ACCOUNT      ?= rainfall-deployer
+ETHERSCAN_KEY ?= SH6TUFNGYM3S2PE9I6C8NJH6WHF7A9P2ZB
+DEPLOYER     ?= 0xc022d2263835D14D5AcA7E3f45ADA019D1E23D9e
 
-## Deployment sequence
+# ── Unchanged contract addresses ─────────────────────────────
+WETH                 ?= 0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14
+RAINFALL_COORDINATOR ?= 0x58079Fd1c9BCdbe91eD4c83E1bE196B5FFBa62e6
+RAINFALL_CONSUMER    ?= 0x96722110DE16F18d3FF21E070F2251cbf8376f92
+PREMIUM_COORDINATOR  ?= 0xf322B700c27a8C527F058f48481877855bD84F6e
+PREMIUM_CONSUMER     ?= 0xEB36260fc0647D9ca4b67F40E1310697074897d4
+CCIP_FACTORY         ?= 0x39a0430cFB4E1b850087ba6157bB0c5F35b20dF4
 
-### DeployRainfall Chainlink Consumer
+# ── New addresses (set after deploy) ─────────────────────────
+BRUMA            ?= 0xB8171af0ecb428a74626C63dA843dc7840D409da
+VAULT            ?= 0x91E707c9c78Cd099716A91BC63190BB813BE16d4
+REINSURANCE_POOL ?= 0x1f24B221d3aEd386A239E1AD21B61bCE44dfcAbB
 
-forge script script/DeployRainfall.s.sol --rpc-url https://eth-sepolia.g.alchemy.com/v2/8rnTBOrmLgFWnn-IAsFxK --account rainfall-deployer --broadcast --verify SH6TUFNGYM3S2PE9I6C8NJH6WHF7A9P2ZB
+# ── Hackathon risk limits ─────────────────────────────────────
+MAX_UTIL         ?= 9500
+TARGET_UTIL      ?= 7000
+MAX_LOCATION_EXP ?= 8000
+REINSURANCE_BPS  ?= 500
 
-## Deploy Rainfall Coordinator
+# ── Formatting helpers ────────────────────────────────────────
+BOLD  := \033[1m
+RESET := \033[0m
+GREEN := \033[32m
+CYAN  := \033[36m
+YELLOW := \033[33m
 
-forge script script/DeployCoordinator.s.sol --rpc-url https://eth-sepolia.g.alchemy.com/v2/8rnTBOrmLgFWnn-IAsFxK --account rainfall-deployer --broadcast --verify SH6TUFNGYM3S2PE9I6C8NJH6WHF7A9P2ZB
+.PHONY: help \
+        build test test-fork coverage \
+        deploy-all deploy-chainlink deploy-core deploy-factory \
+        fund-vault set-limits set-guardian activate-reinsurance \
+        quote-flood quote-drought check-quote create-option \
+        check-vault check-bruma check-pool \
+        wrap-eth approve-weth \
+        clean
 
+# ============================================================
+#  HELP
+# ============================================================
 
-## Transfer ownership For Rainfall
+help:
+	@echo ""
+	@echo "$(BOLD)$(CYAN)Bruma — Operations Makefile$(RESET)"
+	@echo ""
+	@echo "$(BOLD)Build & Test$(RESET)"
+	@echo "  make build              Compile all contracts"
+	@echo "  make test               Run unit tests (no fork)"
+	@echo "  make test-fork          Run fork tests against Sepolia"
+	@echo "  make coverage           Coverage report (no fork)"
+	@echo "  make coverage-fork      Coverage report (with fork)"
+	@echo ""
+	@echo "$(BOLD)Deployment$(RESET)"
+	@echo "  make deploy-chainlink   Deploy RainfallConsumer + RainfallCoordinator"
+	@echo "                          + PremiumConsumer + PremiumCoordinator (first time only)"
+	@echo "  make deploy-core        Redeploy Bruma + BrumaVault + ReinsurancePool"
+	@echo "  make deploy-factory     Redeploy BrumaCCIPEscrowFactory (if BRUMA changed)"
+	@echo "  make deploy-all         Full fresh deploy (chainlink + core + factory)"
+	@echo ""
+	@echo "$(BOLD)Post-Deploy Config$(RESET)"
+	@echo "  make fund-vault         Wrap 1 ETH and deposit into vault"
+	@echo "  make set-limits         Set hackathon utilization + location limits"
+	@echo "  make set-guardian       Set deployer as guardian (dev shortcut)"
+	@echo "  make activate-reinsurance  Wire vault to reinsurance pool"
+	@echo ""
+	@echo "$(BOLD)Options Operations$(RESET)"
+	@echo "  make quote-flood        Request flood protection premium quote"
+	@echo "  make quote-drought      Request drought protection premium quote"
+	@echo "  make check-quote        Check if REQUEST_ID quote is fulfilled"
+	@echo "  make create-option      Create option from fulfilled REQUEST_ID"
+	@echo ""
+	@echo "$(BOLD)Monitoring$(RESET)"
+	@echo "  make check-vault        Print all vault metrics"
+	@echo "  make check-bruma        Print Bruma state"
+	@echo "  make check-pool         Print ReinsurancePool state"
+	@echo ""
+	@echo "$(BOLD)Required env vars$(RESET)"
+	@echo "  RPC, ACCOUNT, ETHERSCAN_KEY, DEPLOYER"
+	@echo "  BRUMA, VAULT, REINSURANCE_POOL  (after deploy)"
+	@echo "  REQUEST_ID                       (for check-quote / create-option)"
+	@echo ""
 
-cast send 0x96722110DE16F18d3FF21E070F2251cbf8376f92 "transferOwnership(address)" 0x58079Fd1c9BCdbe91eD4c83E1bE196B5FFBa62e6 --rpc-url https://eth-sepolia.g.alchemy.com/v2/8rnTBOrmLgFWnn-IAsFxK --account rainfall-deployer 
+# ============================================================
+#  BUILD & TEST
+# ============================================================
 
-## Accept Consumer Ownership
+build:
+	@echo "$(BOLD)Building...$(RESET)"
+	forge build
 
-cast send 0x58079Fd1c9BCdbe91eD4c83E1bE196B5FFBa62e6 \
-  "acceptConsumerOwnership()" \
-  --rpc-url https://eth-sepolia.g.alchemy.com/v2/8rnTBOrmLgFWnn-IAsFxK \
-  --account rainfall-deployer
+test:
+	@echo "$(BOLD)Running unit tests...$(RESET)"
+	forge test --no-match-contract "DeploymentTest" -v
 
+test-fork:
+	@echo "$(BOLD)Running fork tests against Sepolia...$(RESET)"
+	forge test --match-contract "DeploymentTest" --fork-url $(RPC) -vvv
 
-## DeployPremiumConsumer
+coverage:
+	@echo "$(BOLD)Coverage (unit tests)...$(RESET)"
+	forge coverage --no-match-contract "DeploymentTest"
 
-forge script script/DeployPremiumConsumer.s.sol:DeployPremiumConsumer --rpc-url https://eth-sepolia.g.alchemy.com/v2/8rnTBOrmLgFWnn-IAsFxK --account rainfall-deployer --broadcast --verify SH6TUFNGYM3S2PE9I6C8NJH6WHF7A9P2ZB
+coverage-fork:
+	@echo "$(BOLD)Coverage (with fork)...$(RESET)"
+	forge coverage --fork-url $(RPC)
 
-PREMIUM_CONSUMER=0xEB36260fc0647D9ca4b67F40E1310697074897d4
+clean:
+	forge clean
 
-## Deploy Premium Coordinator
+# ============================================================
+#  CHAINLINK INFRASTRUCTURE (first time only)
+# ============================================================
 
-forge script script/DeployPremiumCoordinator.s.sol:DeployPremiumCoordinator --rpc-url https://eth-sepolia.g.alchemy.com/v2/8rnTBOrmLgFWnn-IAsFxK --account rainfall-deployer --broadcast --verify SH6TUFNGYM3S2PE9I6C8NJH6WHF7A9P2ZB
+deploy-chainlink: _deploy-rainfall-consumer _transfer-rainfall-ownership \
+                  _accept-rainfall-ownership \
+                  _deploy-premium-consumer _deploy-premium-coordinator \
+                  _transfer-premium-ownership _accept-premium-ownership
+	@echo "$(GREEN)$(BOLD)Chainlink infra deployed and wired.$(RESET)"
 
-PREMIUM_COORDINATOR=0xf322B700c27a8C527F058f48481877855bD84F6e
+_deploy-rainfall-consumer:
+	@echo "$(BOLD)[1/7] Deploying RainfallConsumer...$(RESET)"
+	forge script script/DeployRainfall.s.sol \
+	  --rpc-url $(RPC) --account $(ACCOUNT) \
+	  --broadcast --verify $(ETHERSCAN_KEY)
 
-## Transfer ownership For PremiumCalculator
+_deploy-rainfall-coordinator:
+	@echo "$(BOLD)[2/7] Deploying RainfallCoordinator...$(RESET)"
+	forge script script/DeployCoordinator.s.sol \
+	  --rpc-url $(RPC) --account $(ACCOUNT) \
+	  --broadcast --verify $(ETHERSCAN_KEY)
 
-cast send 0xEB36260fc0647D9ca4b67F40E1310697074897d4 "transferOwnership(address)" 0xf322B700c27a8C527F058f48481877855bD84F6e --rpc-url https://eth-sepolia.g.alchemy.com/v2/8rnTBOrmLgFWnn-IAsFxK --account rainfall-deployer 
+_transfer-rainfall-ownership:
+	@echo "$(BOLD)[3/7] Transferring RainfallConsumer ownership to Coordinator...$(RESET)"
+	cast send $(RAINFALL_CONSUMER) \
+	  "transferOwnership(address)" $(RAINFALL_COORDINATOR) \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
 
-## Accept Consumer Ownership
+_accept-rainfall-ownership:
+	@echo "$(BOLD)[4/7] Coordinator accepting consumer ownership...$(RESET)"
+	cast send $(RAINFALL_COORDINATOR) \
+	  "acceptConsumerOwnership()" \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
 
-cast send 0xf322B700c27a8C527F058f48481877855bD84F6e \
-  "acceptConsumerOwnership()" \
-  --rpc-url https://eth-sepolia.g.alchemy.com/v2/8rnTBOrmLgFWnn-IAsFxK \
-  --account rainfall-deployer
+_deploy-premium-consumer:
+	@echo "$(BOLD)[5/7] Deploying PremiumConsumer...$(RESET)"
+	forge script script/DeployPremiumConsumer.s.sol:DeployPremiumConsumer \
+	  --rpc-url $(RPC) --account $(ACCOUNT) \
+	  --broadcast --verify $(ETHERSCAN_KEY)
 
+_deploy-premium-coordinator:
+	@echo "$(BOLD)[6/7] Deploying PremiumCoordinator...$(RESET)"
+	forge script script/DeployPremiumCoordinator.s.sol:DeployPremiumCoordinator \
+	  --rpc-url $(RPC) --account $(ACCOUNT) \
+	  --broadcast --verify $(ETHERSCAN_KEY)
 
-  ## Deploy Bruma
+_transfer-premium-ownership:
+	@echo "$(BOLD)[6b] Transferring PremiumConsumer ownership to Coordinator...$(RESET)"
+	cast send $(PREMIUM_CONSUMER) \
+	  "transferOwnership(address)" $(PREMIUM_COORDINATOR) \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
 
-  forge script script/DeployBruma.s.sol:DeployBruma --rpc-url $RPC --account rainfall-deployer --broadcast --verify SH6TUFNGYM3S2PE9I6C8NJH6WHF7A9P2ZB
+_accept-premium-ownership:
+	@echo "$(BOLD)[7/7] PremiumCoordinator accepting consumer ownership...$(RESET)"
+	cast send $(PREMIUM_COORDINATOR) \
+	  "acceptConsumerOwnership()" \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
 
+# ============================================================
+#  CORE DEPLOYMENT (Bruma + BrumaVault + ReinsurancePool)
+# ============================================================
 
-## Contract Addresses (Sepolia)
-```
-# Core Contracts
-export BRUMA=0x762a995182433fDE85dC850Fa8FF6107582110d2
-export VAULT=0x681915B4226014045665e4D5d6Bb348eB90cB32f
-export WETH=0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14
-export PREMIUM_CONSUMER=0xEB36260fc0647D9ca4b67F40E1310697074897d4
-export DEPLOYER=0xc022d2263835D14D5AcA7E3f45ADA019D1E23D9e
-export RPC=https://eth-sepolia.g.alchemy.com/v2/lmeow
-```
-## VAULT OPERATIONS
+deploy-core:
+	@echo "$(BOLD)Redeploying core contracts...$(RESET)"
+	forge script script/DeployBruma.s.sol:DeployBruma \
+	  --rpc-url $(RPC) \
+	  --account $(ACCOUNT) \
+	  --broadcast \
+	  --verify $(ETHERSCAN_KEY) \
+	  -vvv
+	@echo ""
+	@echo "$(YELLOW)$(BOLD)Copy the new addresses above into your .env file:$(RESET)"
+	@echo "  BRUMA=<new>"
+	@echo "  VAULT=<new>"
+	@echo "  REINSURANCE_POOL=<new>"
 
-```Javascript
-# Check ETH balance
-cast balance $DEPLOYER --rpc-url $RPC
+deploy-factory:
+	@echo "$(BOLD)Redeploying BrumaCCIPEscrowFactory (new Bruma: $(BRUMA))...$(RESET)"
+	forge script script/DeployBrumaFactory.s.sol \
+	  --rpc-url $(RPC) \
+	  --account $(ACCOUNT) \
+	  --broadcast \
+	  --verify $(ETHERSCAN_KEY)
 
-# Check WETH balance
-cast call $WETH \
-  "balanceOf(address)(uint256)" \
-  $YOUR_ADDRESS \
-  --rpc-url $RPC
+deploy-all: deploy-chainlink deploy-core deploy-factory
+	@echo "$(GREEN)$(BOLD)Full deployment complete.$(RESET)"
 
-# Check vault shares
-cast call $VAULT \
-  "balanceOf(address)(uint256)" \
-  $DEPLOYER \
-  --rpc-url $RPC
-```
-## Deposit Liquidity
+# ============================================================
+#  POST-DEPLOY CONFIGURATION
+# ============================================================
 
-```Javascript
-# Wrap 1 ETH to WETH
-cast send $WETH \
-  "deposit()" \
-  --value 1ether \
-  --rpc-url $RPC \
-  --account rainfall-deployer
-```
-```Javascript
-# Approve 1 WETH (1000000000000000000 wei)
-cast send $WETH \
-  "approve(address,uint256)" \
-  $VAULT \
-  1000000000000000000 \
-  --rpc-url $RPC \
-  --account rainfall-deployer
+wrap-eth:
+	@echo "$(BOLD)Wrapping 1 ETH → WETH...$(RESET)"
+	cast send $(WETH) \
+	  "deposit()" \
+	  --value 1ether \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
 
-  cast send $VAULT \
-  "deposit(uint256,address)(uint256)" \
-  1000000000000000000 \
-  $DEPLOYER \
-  --rpc-url $RPC \
-  --account rainfall-deployer
-```
-## Withdraw from Vault
+approve-weth:
+	@echo "$(BOLD)Approving VAULT to spend 1 WETH...$(RESET)"
+	cast send $(WETH) \
+	  "approve(address,uint256)" \
+	  $(VAULT) 1000000000000000000 \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
 
-```Javascript
-# Check maximum withdrawable amount
-cast call $VAULT \
-  "maxWithdraw(address)(uint256)" \
-  $YOUR_ADDRESS \
-  --rpc-url $RPC
+fund-vault: wrap-eth approve-weth
+	@echo "$(BOLD)Depositing 1 WETH into vault...$(RESET)"
+	cast send $(VAULT) \
+	  "deposit(uint256,address)" \
+	  1000000000000000000 $(DEPLOYER) \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
+	@echo "$(GREEN)Vault funded.$(RESET)"
+	@make check-vault
 
-# Withdraw available WETH
-cast send $VAULT \
-  "withdraw(uint256,address,address)(uint256)" \
-  500000000000000000 \
-  $YOUR_ADDRESS \
-  $YOUR_ADDRESS \
-  --rpc-url $RPC \
-  --account rainfall-deployer
-```
+set-guardian:
+	@echo "$(BOLD)Setting deployer as guardian (dev shortcut)...$(RESET)"
+	@echo "$(YELLOW)NOTE: In production, set to CRE_GUARDIAN wallet instead.$(RESET)"
+	cast send $(VAULT) \
+	  "setGuardian(address)" $(DEPLOYER) \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
 
-## Check Vault Metrics
+set-limits:
+	@echo "$(BOLD)Setting hackathon risk limits...$(RESET)"
+	@echo "  maxUtilization=$(MAX_UTIL) targetUtilization=$(TARGET_UTIL)"
+	@echo "  maxLocationExposure=$(MAX_LOCATION_EXP)"
+	@echo "$(YELLOW)NOTE: setUtilizationLimits requires guardian wallet.$(RESET)"
+	cast send $(VAULT) \
+	  "setUtilizationLimits(uint256,uint256)" \
+	  $(MAX_UTIL) $(TARGET_UTIL) \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
+	cast send $(VAULT) \
+	  "setMaxLocationExposure(uint256)" \
+	  $(MAX_LOCATION_EXP) \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
+	@echo "$(GREEN)Limits set.$(RESET)"
 
-```Javascript
-# Get comprehensive vault metrics
-cast call $VAULT \
-  "getMetrics()(uint256,uint256,uint256,uint256,uint256,uint256,int256)" \
-  --rpc-url $RPC
+activate-reinsurance:
+	@echo "$(BOLD)Wiring vault to reinsurance pool...$(RESET)"
+	cast send $(VAULT) \
+	  "setReinsurancePool(address)" $(REINSURANCE_POOL) \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
+	cast send $(VAULT) \
+	  "setReinsuranceYieldBps(uint256)" $(REINSURANCE_BPS) \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
+	@echo "$(GREEN)Reinsurance active at $(REINSURANCE_BPS) bps yield routing.$(RESET)"
 
-# Individual metrics
-cast call $VAULT "totalAssets()(uint256)" --rpc-url $RPC
-cast call $VAULT "totalLocked()(uint256)" --rpc-url $RPC
-cast call $VAULT "availableLiquidity()(uint256)" --rpc-url $RPC
-cast call $VAULT "utilizationRate()(uint256)" --rpc-url $RPC
-```
+# ============================================================
+#  OPTIONS OPERATIONS
+# ============================================================
 
-## OPTIONS OPERATIONS
+quote-flood:
+	$(eval NOW := $(shell cast block latest --field timestamp --rpc-url $(RPC)))
+	$(eval START := $(shell echo $$(($(NOW) + 300))))
+	$(eval EXPIRY := $(shell echo $$(($(START) + 259200))))
+	@echo "$(BOLD)Requesting flood protection quote...$(RESET)"
+	@echo "  Start:  $(START)  Expiry: $(EXPIRY)"
+	cast send $(BRUMA) \
+	  "requestPremiumQuote((uint8,string,string,uint256,uint256,uint256,uint256,uint256))" \
+	  "(0,\"10.0\",\"-75.0\",$(START),$(EXPIRY),100,50,10000000000000000)" \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
 
-```Javascript
-NOW=$(cast block latest --field timestamp --rpc-url $RPC)
-START=$((NOW + 300))     
-EXPIRY=$((START + 259200)) 
+quote-drought:
+	$(eval NOW := $(shell cast block latest --field timestamp --rpc-url $(RPC)))
+	$(eval START := $(shell echo $$(($(NOW) + 300))))
+	$(eval EXPIRY := $(shell echo $$(($(START) + 259200))))
+	@echo "$(BOLD)Requesting drought protection quote...$(RESET)"
+	@echo "  Start:  $(START)  Expiry: $(EXPIRY)"
+	cast send $(BRUMA) \
+	  "requestPremiumQuote((uint8,string,string,uint256,uint256,uint256,uint256,uint256))" \
+	  "(1,\"10.0\",\"-75.0\",$(START),$(EXPIRY),80,50,10000000000000000)" \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
 
-echo "Current block time: $NOW ($(date -d @$NOW))"
-echo "Option start time: $START ($(date -d @$START))"
-echo "Option expiry time: $EXPIRY ($(date -d @$EXPIRY))"
-echo ""
+check-quote:
+ifndef REQUEST_ID
+	@echo "$(YELLOW)Usage: make check-quote REQUEST_ID=0x...$(RESET)"
+	@exit 1
+endif
+	@echo "$(BOLD)Checking quote $(REQUEST_ID)...$(RESET)"
+	@echo -n "  Fulfilled: "
+	@cast call $(PREMIUM_CONSUMER) \
+	  "isRequestFulfilled(bytes32)(bool)" $(REQUEST_ID) \
+	  --rpc-url $(RPC)
+	@echo -n "  Premium:   "
+	@cast call $(PREMIUM_CONSUMER) \
+	  "premiumByRequest(bytes32)(uint256)" $(REQUEST_ID) \
+	  --rpc-url $(RPC)
 
-cast send $BRUMA \
-  "requestPremiumQuote((uint8,string,string,uint256,uint256,uint256,uint256,uint256))(bytes32)" \
-  "(0,\"10.0\",\"-75.0\",$START,$EXPIRY,100,50,10000000000000000)" \
-  --rpc-url $RPC --account rainfall-deployer
-```
+create-option:
+ifndef REQUEST_ID
+	@echo "$(YELLOW)Usage: make create-option REQUEST_ID=0x...$(RESET)"
+	@exit 1
+endif
+	$(eval PREMIUM := $(shell cast call $(PREMIUM_CONSUMER) \
+	  "premiumByRequest(bytes32)(uint256)" $(REQUEST_ID) --rpc-url $(RPC)))
+	$(eval FEE := $(shell echo $$(($(PREMIUM) / 100))))
+	$(eval TOTAL := $(shell echo $$(($(PREMIUM) + $(FEE)))))
+	@echo "$(BOLD)Creating option from quote $(REQUEST_ID)...$(RESET)"
+	@echo "  Premium:      $(PREMIUM) wei"
+	@echo "  Protocol fee: $(FEE) wei"
+	@echo "  Total cost:   $(TOTAL) wei"
+	cast send $(BRUMA) \
+	  "createOptionWithQuote(bytes32)" $(REQUEST_ID) \
+	  --value $(TOTAL) \
+	  --rpc-url $(RPC) --account $(ACCOUNT)
 
-## Drought Protection 
+# ============================================================
+#  MONITORING
+# ============================================================
 
-```Javascript
+check-vault:
+	@echo "$(BOLD)$(CYAN)BrumaVault ($(VAULT))$(RESET)"
+	@echo -n "  totalAssets:        "
+	@cast call $(VAULT) "totalAssets()(uint256)"        --rpc-url $(RPC)
+	@echo -n "  totalLocked:        "
+	@cast call $(VAULT) "totalLocked()(uint256)"        --rpc-url $(RPC)
+	@echo -n "  availableLiquidity: "
+	@cast call $(VAULT) "availableLiquidity()(uint256)" --rpc-url $(RPC)
+	@echo -n "  utilizationRate:    "
+	@cast call $(VAULT) "utilizationRate()(uint256)"    --rpc-url $(RPC)
+	@echo -n "  totalPremiums:      "
+	@cast call $(VAULT) "totalPremiumsEarned()(uint256)" --rpc-url $(RPC)
+	@echo -n "  totalPayouts:       "
+	@cast call $(VAULT) "totalPayouts()(uint256)"       --rpc-url $(RPC)
+	@echo -n "  reinsurancePool:    "
+	@cast call $(VAULT) "reinsurancePool()(address)"    --rpc-url $(RPC)
+	@echo -n "  reinsuranceBps:     "
+	@cast call $(VAULT) "reinsuranceYieldBps()(uint256)" --rpc-url $(RPC)
+	@echo -n "  guardian:           "
+	@cast call $(VAULT) "guardian()(address)"           --rpc-url $(RPC)
+	@echo -n "  weatherOptions:     "
+	@cast call $(VAULT) "weatherOptions()(address)"     --rpc-url $(RPC)
 
-NOW=$(cast block latest --field timestamp --rpc-url $RPC)
-START=$((NOW + 300))     
-EXPIRY=$((START + 259200)) 
+check-bruma:
+	@echo "$(BOLD)$(CYAN)Bruma ($(BRUMA))$(RESET)"
+	@echo -n "  owner:              "
+	@cast call $(BRUMA) "owner()(address)"              --rpc-url $(RPC)
+	@echo -n "  vault:              "
+	@cast call $(BRUMA) "vault()(address)"              --rpc-url $(RPC)
+	@echo -n "  protocolFeeBps:     "
+	@cast call $(BRUMA) "protocolFeeBps()(uint256)"     --rpc-url $(RPC)
+	@echo -n "  minPremium:         "
+	@cast call $(BRUMA) "minPremium()(uint256)"         --rpc-url $(RPC)
+	@echo -n "  collectedFees:      "
+	@cast call $(BRUMA) "collectedFees()(uint256)"      --rpc-url $(RPC)
+	@echo -n "  autoClaimEnabled:   "
+	@cast call $(BRUMA) "autoClaimEnabled()(bool)"      --rpc-url $(RPC)
+	@echo -n "  activeOptions:      "
+	@cast call $(BRUMA) "getActiveOptions()(uint256[])" --rpc-url $(RPC)
 
-echo "Current block time: $NOW ($(date -d @$NOW))"
-echo "Option start time: $START ($(date -d @$START))"
-echo "Option expiry time: $EXPIRY ($(date -d @$EXPIRY))"
-echo ""
-
-cast send $BRUMA \
-  "requestPremiumQuote((uint8,string,string,uint256,uint256,uint256,uint256,uint256))(bytes32)" \
-  "(1,\"10.0\",\"-75.0\",$START,$EXPIRY,80,50,10000000000000000)" \
-  --rpc-url $RPC \
-  --account rainfall-deployer
-```
-
-
-## PREMIUM CONSUMER
-```Javascript
-cast call $PREMIUM_CONSUMER   "isRequestFulfilled(bytes32)(bool)"   0x2ca0d40941db25001d48736d2b6c3671b74c19782172164a4307bce67bc0a44c   --rpc-url $RPC
-cast call $PREMIUM_CONSUMER   "premiumByRequest(bytes32)(uint256)"   0x2ca0d40941db25001d48736d2b6c3671b74c19782172164a4307bce67bc0a44c   --rpc-url $RPC
-````
-
-cast call $BRUMA \
-  "getActiveOptions()(uint256[])" \
-  --rpc-url https://eth-sepolia.g.alchemy.com/v2/8rnTBOrmLgFWnn-IAsFxK
-
-  # Check Quote 1
-export REQUEST_1=0x9b32f2971c102479d92358b185c477a867e0f1ae1ebac63c94ac9bb741bf1cce
-export PREMIUM_CONSUMER=0xEB36260fc0647D9ca4b67F40E1310697074897d4
-export TOTAL_COST=500000000000000000
-
-cast call $PREMIUM_CONSUMER \
-  "premiumByRequest(bytes32)(uint256)" \
-  $REQUEST_1 \
-  --rpc-url $RPC
-
-# If premium > 0, create option:
-PREMIUM=$(cast call $PREMIUM_CONSUMER "premiumByRequest(bytes32)(uint256)" $REQUEST_1 --rpc-url $RPC)
-PROTOCOL_FEE=$((PREMIUM / 100))
-TOTAL_COST=$((PREMIUM + PROTOCOL_FEE))
-
-echo "Total cost: $(cast --to-unit $TOTAL_COST ether) ETH"
-
-cast send $BRUMA \
-  "createOptionWithQuote(bytes32)(uint256)" \
-  $REQUEST_1 \
-  --value $TOTAL_COST \
-  --rpc-url $RPC \
-  --account rainfall-deployer
-
-
-
-  ///////////////////////////////// SET UTILIZATION ////////////////////////////////////////////
-
-
-  # Raise utilization to 95% (max) for hackathon
-cast send $VAULT \
-  'setUtilizationLimits(uint256,uint256)' \
-  9500 7000 \
-  --rpc-url $RPC --account rainfall-deployer
-
-# Raise per-location exposure limit to 80% (allows most of the vault per location)
-cast send $VAULT \
-  'setMaxLocationExposure(uint256)' \
-  8000 \
-  --rpc-url $RPC --account rainfall-deployer
+check-pool:
+	@echo "$(BOLD)$(CYAN)ReinsurancePool ($(REINSURANCE_POOL))$(RESET)"
+	@echo -n "  totalAssets:        "
+	@cast call $(REINSURANCE_POOL) "totalAssets()(uint256)"      --rpc-url $(RPC)
+	@echo -n "  totalDrawn:         "
+	@cast call $(REINSURANCE_POOL) "totalDrawn()(uint256)"       --rpc-url $(RPC)
+	@echo -n "  accruedYield:       "
+	@cast call $(REINSURANCE_POOL) "accruedYield()(uint256)"     --rpc-url $(RPC)
+	@echo -n "  availableCapacity:  "
+	@cast call $(REINSURANCE_POOL) "availableCapacity()(uint256)" --rpc-url $(RPC)
+	@echo -n "  maxDrawableNow:     "
+	@cast call $(REINSURANCE_POOL) "maxDrawableNow()(uint256)"   --rpc-url $(RPC)
+	@echo -n "  primaryVault:       "
+	@cast call $(REINSURANCE_POOL) "primaryVault()(address)"     --rpc-url $(RPC)
+	@echo -n "  guardian:           "
+	@cast call $(REINSURANCE_POOL) "guardian()(address)"         --rpc-url $(RPC)
+	@echo -n "  lockupPeriod:       "
+	@cast call $(REINSURANCE_POOL) "lockupPeriod()(uint256)"     --rpc-url $(RPC)

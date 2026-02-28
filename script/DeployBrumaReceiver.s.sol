@@ -25,7 +25,6 @@ import {BrumaCCIPReceiver} from "../src/BrumaCCIPReceiver.sol";
  *   CCIP Router, WETH (wrapped AVAX), Ethereum Sepolia chain selector
  */
 contract DeployBrumaReceiver is Script {
-
     // ── Avalanche Fuji Chainlink addresses ────────────────────────────────────
     address constant CCIP_ROUTER_FUJI = 0xF694E193200268f9a4868e4Aa017A0118C9a8177;
 
@@ -53,11 +52,7 @@ contract DeployBrumaReceiver is Script {
 
         vm.startBroadcast();
 
-        receiver = new BrumaCCIPReceiver(
-            CCIP_ROUTER_FUJI,
-            WETH_FUJI,
-            SEPOLIA_CHAIN_SELECTOR
-        );
+        receiver = new BrumaCCIPReceiver(CCIP_ROUTER_FUJI, WETH_FUJI, SEPOLIA_CHAIN_SELECTOR);
 
         vm.stopBroadcast();
 

@@ -134,7 +134,7 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
     event BridgeDispatched(
         uint256 indexed tokenId,
         bytes32 indexed ccipMessageId,
-        uint64  destinationChain,
+        uint64 destinationChain,
         address destinationReceiver,
         uint256 ccipBnMAmount,
         uint256 ccipFee
@@ -182,27 +182,27 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
         address _ccipRouter,
         address _owner,
         address _authorizedCaller,
-        uint64  _destChainSelector,
+        uint64 _destChainSelector,
         address _destReceiver
     ) {
-        require(_bruma      != address(0), "Invalid bruma");
-        require(_weth       != address(0), "Invalid weth");
-        require(_ccipBnM    != address(0), "Invalid ccipBnM");
-        require(_link       != address(0), "Invalid link");
+        require(_bruma != address(0), "Invalid bruma");
+        require(_weth != address(0), "Invalid weth");
+        require(_ccipBnM != address(0), "Invalid ccipBnM");
+        require(_link != address(0), "Invalid link");
         require(_ccipRouter != address(0), "Invalid router");
-        require(_owner      != address(0), "Invalid owner");
+        require(_owner != address(0), "Invalid owner");
         require(_destReceiver != address(0), "Invalid dest receiver");
 
-        bruma                    = IBruma(_bruma);
-        brumaERC721              = IERC721(_bruma);
-        weth                     = IWETH(_weth);
-        ccipBnM                  = ICCIPBnM(_ccipBnM);
-        link                     = IERC20(_link);
-        ccipRouter               = IRouterClient(_ccipRouter);
-        owner                    = _owner;
-        authorizedCaller         = _authorizedCaller;
+        bruma = IBruma(_bruma);
+        brumaERC721 = IERC721(_bruma);
+        weth = IWETH(_weth);
+        ccipBnM = ICCIPBnM(_ccipBnM);
+        link = IERC20(_link);
+        ccipRouter = IRouterClient(_ccipRouter);
+        owner = _owner;
+        authorizedCaller = _authorizedCaller;
         destinationChainSelector = _destChainSelector;
-        destinationReceiver      = _destReceiver;
+        destinationReceiver = _destReceiver;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -227,10 +227,7 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
      * @param tokenId   The option token ID
      * @param settledAt Unix timestamp from the OptionSettled event
      */
-    function claimAndBridgePermissionless(
-        uint256 tokenId,
-        uint256 settledAt
-    ) external override nonReentrant {
+    function claimAndBridgePermissionless(uint256 tokenId, uint256 settledAt) external override nonReentrant {
         uint256 availableAt = settledAt + PERMISSIONLESS_DELAY;
         if (block.timestamp < availableAt) revert PermissionlessDelayNotPassed(availableAt);
         _claimAndBridge(tokenId);
@@ -281,7 +278,7 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
      */
     function withdrawNFT(uint256 tokenId) external {
         require(msg.sender == owner, "Only owner");
-        require(!claimed[tokenId],   "Already settled");
+        require(!claimed[tokenId], "Already settled");
         brumaERC721.safeTransferFrom(address(this), owner, tokenId);
         emit NFTWithdrawn(tokenId, owner);
     }
@@ -289,12 +286,11 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
     /**
      * @notice ERC721 receiver hook. Accepts only Bruma NFTs.
      */
-    function onERC721Received(
-        address,
-        address from,
-        uint256 tokenId,
-        bytes calldata
-    ) external override returns (bytes4) {
+    function onERC721Received(address, address from, uint256 tokenId, bytes calldata)
+        external
+        override
+        returns (bytes4)
+    {
         if (msg.sender != address(brumaERC721)) revert OnlyBrumaNFTs();
         emit NFTReceived(tokenId, from);
         return IERC721Receiver.onERC721Received.selector;
@@ -328,26 +324,13 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
     //////////////////////////////////////////////////////////////*/
 
     /// @inheritdoc IBrumaCCIPEscrow
-    function estimateCCIPFee(uint256 /* payoutAmount */)
-        external
-        view
-        override
-        returns (uint256 linkFee)
-    {
+    function estimateCCIPFee(uint256 /* payoutAmount */ ) external view override returns (uint256 linkFee) {
         // Fee is based on CCIP-BnM amount, not ETH payout amount
-        return ccipRouter.getFee(
-            destinationChainSelector,
-            _buildCCIPMessage(CCIP_BNM_BRIDGE_AMOUNT, 0)
-        );
+        return ccipRouter.getFee(destinationChainSelector, _buildCCIPMessage(CCIP_BNM_BRIDGE_AMOUNT, 0));
     }
 
     /// @inheritdoc IBrumaCCIPEscrow
-    function getBridgeReceipt(uint256 tokenId)
-        external
-        view
-        override
-        returns (BridgeReceipt memory)
-    {
+    function getBridgeReceipt(uint256 tokenId) external view override returns (BridgeReceipt memory) {
         return _bridgeReceipts[tokenId];
     }
 
@@ -404,7 +387,7 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
 
         // ── Step 3: Build CCIP message and check fee ──────────────────────────
         Client.EVM2AnyMessage memory message = _buildCCIPMessage(CCIP_BNM_BRIDGE_AMOUNT, tokenId);
-        uint256 ccipFee     = ccipRouter.getFee(destinationChainSelector, message);
+        uint256 ccipFee = ccipRouter.getFee(destinationChainSelector, message);
         uint256 currentLink = link.balanceOf(address(this));
         if (currentLink < ccipFee) revert InsufficientLinkForFees(ccipFee, currentLink);
 
@@ -416,20 +399,15 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
 
         // ── Step 5: Store receipt ─────────────────────────────────────────────
         _bridgeReceipts[tokenId] = BridgeReceipt({
-            messageId:           messageId,
-            amount:              CCIP_BNM_BRIDGE_AMOUNT,
-            timestamp:           block.timestamp,
-            destinationChain:    destinationChainSelector,
+            messageId: messageId,
+            amount: CCIP_BNM_BRIDGE_AMOUNT,
+            timestamp: block.timestamp,
+            destinationChain: destinationChainSelector,
             destinationReceiver: destinationReceiver
         });
 
         emit BridgeDispatched(
-            tokenId,
-            messageId,
-            destinationChainSelector,
-            destinationReceiver,
-            CCIP_BNM_BRIDGE_AMOUNT,
-            ccipFee
+            tokenId, messageId, destinationChainSelector, destinationReceiver, CCIP_BNM_BRIDGE_AMOUNT, ccipFee
         );
     }
 
@@ -437,24 +415,23 @@ contract BrumaCCIPEscrow is IBrumaCCIPEscrow, IERC721Receiver, ReentrancyGuard {
      * @dev Constructs the CCIP EVM2AnyMessage using CCIP-BnM as the bridged token.
      *      tokenId is packed into data so BrumaCCIPReceiver can emit indexed events.
      */
-    function _buildCCIPMessage(
-        uint256 bnmAmount,
-        uint256 tokenId
-    ) internal view returns (Client.EVM2AnyMessage memory) {
+    function _buildCCIPMessage(uint256 bnmAmount, uint256 tokenId)
+        internal
+        view
+        returns (Client.EVM2AnyMessage memory)
+    {
         Client.EVMTokenAmount[] memory tokenAmounts = new Client.EVMTokenAmount[](1);
         tokenAmounts[0] = Client.EVMTokenAmount({
-            token:  address(ccipBnM),   // ← CCIP-BnM, not WETH
+            token: address(ccipBnM), // ← CCIP-BnM, not WETH
             amount: bnmAmount
         });
 
         return Client.EVM2AnyMessage({
-            receiver:     abi.encode(destinationReceiver),
-            data:         abi.encode(tokenId),
+            receiver: abi.encode(destinationReceiver),
+            data: abi.encode(tokenId),
             tokenAmounts: tokenAmounts,
-            extraArgs:    Client._argsToBytes(
-                              Client.EVMExtraArgsV1({gasLimit: CCIP_RECEIVER_GAS_LIMIT})
-                          ),
-            feeToken:     address(link)
+            extraArgs: Client._argsToBytes(Client.EVMExtraArgsV1({gasLimit: CCIP_RECEIVER_GAS_LIMIT})),
+            feeToken: address(link)
         });
     }
 
@@ -533,18 +510,18 @@ contract BrumaCCIPEscrowFactory is IBrumaCCIPEscrowFactory {
         address _ccipRouter,
         address _authorizedCaller
     ) {
-        require(_bruma            != address(0), "Invalid bruma");
-        require(_weth             != address(0), "Invalid weth");
-        require(_ccipBnM          != address(0), "Invalid ccipBnM");
-        require(_link             != address(0), "Invalid link");
-        require(_ccipRouter       != address(0), "Invalid router");
+        require(_bruma != address(0), "Invalid bruma");
+        require(_weth != address(0), "Invalid weth");
+        require(_ccipBnM != address(0), "Invalid ccipBnM");
+        require(_link != address(0), "Invalid link");
+        require(_ccipRouter != address(0), "Invalid router");
         require(_authorizedCaller != address(0), "Invalid caller");
 
-        bruma            = _bruma;
-        weth             = _weth;
-        ccipBnM          = _ccipBnM;
-        link             = _link;
-        ccipRouter       = _ccipRouter;
+        bruma = _bruma;
+        weth = _weth;
+        ccipBnM = _ccipBnM;
+        link = _link;
+        ccipRouter = _ccipRouter;
         authorizedCaller = _authorizedCaller;
     }
 
@@ -562,24 +539,23 @@ contract BrumaCCIPEscrowFactory is IBrumaCCIPEscrowFactory {
      * @param _destReceiver       BrumaCCIPReceiver contract on the destination chain
      * @return escrow             Newly deployed escrow address
      */
-    function deployEscrow(
-        uint64  _destChainSelector,
-        address _destReceiver
-    ) public override returns (address escrow) {
-        if (_destReceiver    == address(0)) revert InvalidDestinationReceiver();
-        if (_destChainSelector == 0)        revert InvalidDestinationChain();
+    function deployEscrow(uint64 _destChainSelector, address _destReceiver) public override returns (address escrow) {
+        if (_destReceiver == address(0)) revert InvalidDestinationReceiver();
+        if (_destChainSelector == 0) revert InvalidDestinationChain();
 
-        escrow = address(new BrumaCCIPEscrow(
-            bruma,
-            weth,
-            ccipBnM,        // ← new param
-            link,
-            ccipRouter,
-            msg.sender,
-            authorizedCaller,
-            _destChainSelector,
-            _destReceiver
-        ));
+        escrow = address(
+            new BrumaCCIPEscrow(
+                bruma,
+                weth,
+                ccipBnM, // ← new param
+                link,
+                ccipRouter,
+                msg.sender,
+                authorizedCaller,
+                _destChainSelector,
+                _destReceiver
+            )
+        );
 
         escrowsByOwner[msg.sender].push(escrow);
         isRegisteredEscrow[escrow] = true;
@@ -590,11 +566,10 @@ contract BrumaCCIPEscrowFactory is IBrumaCCIPEscrowFactory {
     /**
      * @notice Deploy escrow and fund with LINK in one transaction.
      */
-    function deployAndFundEscrow(
-        uint64  _destChainSelector,
-        address _destReceiver,
-        uint256 linkAmount
-    ) external returns (address escrow) {
+    function deployAndFundEscrow(uint64 _destChainSelector, address _destReceiver, uint256 linkAmount)
+        external
+        returns (address escrow)
+    {
         escrow = deployEscrow(_destChainSelector, _destReceiver);
         if (linkAmount > 0) {
             IERC20(link).safeTransferFrom(msg.sender, escrow, linkAmount);

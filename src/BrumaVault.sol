@@ -9,67 +9,81 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
+import {IBrumaVault} from "./interface/IBrumaVault.sol";
+
+/// @dev Minimal interface so the vault can push a WETH slice to the
+///      ReinsurancePool inside receivePremium() without importing the full contract.
+interface IReinsurancePool {
+    function receiveYield(uint256 amount) external;
+}
+
 /**
- * @title WeatherOptionsVault - FIXED VERSION
- * @notice ERC-4626 vault with proper inflation attack protection
+ * @title BrumaVault
+ * @notice ERC-4626 liquidity vault backing Bruma parametric rainfall options.
  *
- * FIX: Uses virtual shares/assets offset (modern OpenZeppelin approach)
- * Instead of minting dead shares, we add a virtual offset to all conversions
+ * ROLES:
+ *   owner          — deploy-time config: weatherOptions, guardian, reinsurancePool,
+ *                    reinsuranceYieldBps, maxLocationExposure
+ *   guardian       — runtime risk adjustment: setUtilizationLimits, receiveReinsuranceDraw
+ *                    (mapped to the CRE onRiskCron wallet so the job is fully autonomous)
+ *   weatherOptions — lockCollateral / releaseCollateral / receivePremium
+ *
+ * REINSURANCE YIELD ROUTING (receivePremium):
+ *   When reinsurancePool != address(0) and reinsuranceYieldBps > 0,
+ *   receivePremium() forwards `amount * reinsuranceYieldBps / 10000` WETH
+ *   to the ReinsurancePool as reinsurer yield. The vault retains the rest.
+ *   Defaults to 0 / address(0) — routing is inert until owner activates it.
+ *
+ * REINSURANCE DRAW ACCOUNTING (receiveReinsuranceDraw):
+ *   ReinsurancePool.fundPrimaryVault() transfers WETH here directly.
+ *   The guardian then calls receiveReinsuranceDraw() to update
+ *   totalReinsuranceReceived and emit ReinsuranceDrawReceived.
+ *
+ * INFLATION ATTACK PROTECTION:
+ *   Virtual shares offset of 10^9 (_decimalsOffset = 9) — first depositor
+ *   manipulation requires donating 1000x more than the deposit amount.
  */
-contract BrumaVault is ERC4626, Ownable, ReentrancyGuard {
+contract BrumaVault is IBrumaVault, ERC4626, Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using Math for uint256;
 
     /*//////////////////////////////////////////////////////////////
-                            STORAGE
+                                STORAGE
     //////////////////////////////////////////////////////////////*/
 
     IERC20 public immutable weth;
-    address public weatherOptions;
 
-    // Risk parameters
-    uint256 public maxUtilizationBps = 8000; // 80% max utilization
-    uint256 public targetUtilizationBps = 6000; // 60% target utilization
+    // ── Access control ────────────────────────────────────────────────────────
+    address public override weatherOptions;
+    address public override guardian;
 
-    // Collateral tracking
-    uint256 public totalLocked;
-    uint256 public totalPremiumsEarned;
-    uint256 public totalPayouts;
+    // ── Risk parameters ───────────────────────────────────────────────────────
+    uint256 public override maxUtilizationBps = 8000; // 80%
+    uint256 public override targetUtilizationBps = 6000; // 60%
+    uint256 public override maxLocationExposureBps = 2000; // 20%
 
-    // Per-location risk limits
-    mapping(bytes32 => uint256) public locationExposure;
-    uint256 public maxLocationExposureBps = 2000; // 20% per location
+    // ── Accounting ────────────────────────────────────────────────────────────
+    uint256 public override totalLocked;
+    uint256 public override totalPremiumsEarned;
+    uint256 public override totalPayouts;
+    uint256 public override totalReinsuranceReceived;
 
-    address public yieldStrategy;
+    // ── Per-location exposure ─────────────────────────────────────────────────
+    mapping(bytes32 => uint256) public override locationExposure;
 
-    // Virtual offset prevents first depositor manipulation
-    uint256 private constant _DECIMALS_OFFSET = 9; // 1000x offset
+    // ── Reinsurance routing ───────────────────────────────────────────────────
+    /// @notice Address of the ReinsurancePool. address(0) disables routing.
+    address public override reinsurancePool;
 
-    /*//////////////////////////////////////////////////////////////
-                            EVENTS
-    //////////////////////////////////////////////////////////////*/
+    /// @notice Basis points of each premium forwarded to ReinsurancePool as WETH yield.
+    ///         Default 0. Capped at 5000 (50%) by setReinsuranceYieldBps.
+    uint256 public override reinsuranceYieldBps;
 
-    event PremiumReceived(uint256 amount, uint256 optionId);
-    event PayoutMade(uint256 amount, uint256 optionId);
-    event CollateralLocked(uint256 amount, uint256 optionId);
-    event CollateralReleased(uint256 amount, uint256 optionId);
-    event UtilizationUpdated(uint256 newMaxBps, uint256 newTargetBps);
-    event YieldStrategyUpdated(address newStrategy);
-    event LocationExposureUpdated(bytes32 locationKey, uint256 exposure);
+    // ── Inflation protection constant ─────────────────────────────────────────
+    uint256 private constant _OFFSET = 9;
 
     /*//////////////////////////////////////////////////////////////
-                            ERRORS
-    //////////////////////////////////////////////////////////////*/
-
-    error UnauthorizedCaller();
-    error UtilizationTooHigh();
-    error InsufficientLiquidity();
-    error LocationExposureTooHigh();
-    error InvalidParameters();
-    error ZeroAmount();
-
-    /*//////////////////////////////////////////////////////////////
-                        CONSTRUCTOR
+                              CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
 
     constructor(IERC20 _weth, string memory _name, string memory _symbol)
@@ -81,119 +95,177 @@ contract BrumaVault is ERC4626, Ownable, ReentrancyGuard {
     }
 
     /*//////////////////////////////////////////////////////////////
-                 INFLATION ATTACK PROTECTION
+                     INFLATION ATTACK PROTECTION
     //////////////////////////////////////////////////////////////*/
 
-    /**
-     * @dev Override decimals offset for inflation protection
-     * Returns the number of decimals used to get user representation of shares.
-     *
-     * This adds a virtual offset to share/asset conversions:
-     * - If offset = 3, first deposit of 1 wei gets 1000 shares
-     * - Attacker would need to donate 1000 wei to make victim's deposit round to 0
-     * - Much more expensive attack (vs 1 wei in vulnerable version)
-     */
     function _decimalsOffset() internal pure virtual override returns (uint8) {
-        return uint8(_DECIMALS_OFFSET);
+        return uint8(_OFFSET);
     }
 
     /*//////////////////////////////////////////////////////////////
-                    VAULT CONFIGURATION
+                        OWNER CONFIGURATION
     //////////////////////////////////////////////////////////////*/
 
-    function setWeatherOptions(address _weatherOptions) external onlyOwner {
-        require(_weatherOptions != address(0), "Invalid address");
-        weatherOptions = _weatherOptions;
+    function setWeatherOptions(address _wo) external override onlyOwner {
+        if (_wo == address(0)) revert InvalidAddress();
+        weatherOptions = _wo;
     }
 
-    function setUtilizationLimits(uint256 _maxBps, uint256 _targetBps) external onlyOwner {
-        require(_maxBps <= 10000 && _targetBps <= _maxBps, "Invalid limits");
-        maxUtilizationBps = _maxBps;
-        targetUtilizationBps = _targetBps;
-        emit UtilizationUpdated(_maxBps, _targetBps);
+    function setGuardian(address _guardian) external override onlyOwner {
+        if (_guardian == address(0)) revert InvalidAddress();
+        address old = guardian;
+        guardian = _guardian;
+        emit GuardianUpdated(old, _guardian);
     }
 
-    function setMaxLocationExposure(uint256 _maxBps) external onlyOwner {
-        require(_maxBps <= 10000, "Invalid percentage");
+    /// @notice Set or clear the ReinsurancePool. address(0) disables yield routing.
+    function setReinsurancePool(address _pool) external override onlyOwner {
+        address old = reinsurancePool;
+        reinsurancePool = _pool;
+        emit ReinsurancePoolUpdated(old, _pool);
+    }
+
+    /**
+     * @notice Set the fraction of each premium routed to ReinsurancePool.
+     * @param _bps Basis points. 0 = off. Max 5000 (50% of premium).
+     */
+    function setReinsuranceYieldBps(uint256 _bps) external override onlyOwner {
+        if (_bps > 5000) revert InvalidLimits();
+        uint256 old = reinsuranceYieldBps;
+        reinsuranceYieldBps = _bps;
+        emit ReinsuranceYieldBpsUpdated(old, _bps);
+    }
+
+    function setMaxLocationExposure(uint256 _maxBps) external override onlyOwner {
+        if (_maxBps > 10000) revert InvalidLimits();
         maxLocationExposureBps = _maxBps;
     }
 
-    function setYieldStrategy(address _strategy) external onlyOwner {
-        yieldStrategy = _strategy;
-        emit YieldStrategyUpdated(_strategy);
+    /*//////////////////////////////////////////////////////////////
+                        GUARDIAN OPERATIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @notice Tighten or relax utilization limits in response to CRE risk signals.
+     * @dev Guardian-only so the CRE job can act autonomously without owner sign-off.
+     */
+    function setUtilizationLimits(uint256 _newMaxBps, uint256 _newTargetBps) external override onlyGuardian {
+        if (_newMaxBps > 10000 || _newTargetBps > _newMaxBps) revert InvalidLimits();
+        maxUtilizationBps = _newMaxBps;
+        targetUtilizationBps = _newTargetBps;
+        emit UtilizationLimitsUpdated(_newMaxBps, _newTargetBps);
+    }
+
+    /**
+     * @notice Record WETH that arrived from a ReinsurancePool draw.
+     * @dev WETH is transferred to this contract by ReinsurancePool.fundPrimaryVault()
+     *      before this call. This function only updates accounting + emits an event.
+     *      Guardian calls this immediately after triggering the draw.
+     */
+    function receiveReinsuranceDraw(uint256 _amount) external override onlyGuardian {
+        if (_amount == 0) revert ZeroAmount();
+        totalReinsuranceReceived += _amount;
+        emit ReinsuranceDrawReceived(_amount);
     }
 
     /*//////////////////////////////////////////////////////////////
-                    VAULT OPERATIONS
+                    WEATHER OPTIONS OPERATIONS
     //////////////////////////////////////////////////////////////*/
 
-    function lockCollateral(uint256 amount, uint256 optionId, bytes32 locationKey)
+    function lockCollateral(uint256 _amount, uint256 _optionId, bytes32 _locationKey)
         external
+        override
         onlyWeatherOptions
-        returns (bool success)
+        returns (bool)
     {
-        if (amount == 0) revert ZeroAmount();
+        if (_amount == 0) revert ZeroAmount();
 
-        // Check utilization limits
         uint256 assets = totalAssets();
         if (assets == 0) revert InsufficientLiquidity();
 
         uint256 available = assets > totalLocked ? assets - totalLocked : 0;
-        if (amount > available) revert InsufficientLiquidity();
+        if (_amount > available) revert InsufficientLiquidity();
 
-        uint256 newUtilization = ((totalLocked + amount) * 10000) / assets;
-        if (newUtilization > maxUtilizationBps) revert UtilizationTooHigh();
+        uint256 newUtil = ((totalLocked + _amount) * 10000) / assets;
+        if (newUtil > maxUtilizationBps) revert UtilizationTooHigh();
 
-        // Check location exposure limits
-        uint256 newLocationExposure = locationExposure[locationKey] + amount;
-        uint256 locationExposurePct = (newLocationExposure * 10000) / assets;
-        if (locationExposurePct > maxLocationExposureBps) {
+        uint256 newLocationExp = locationExposure[_locationKey] + _amount;
+        if ((newLocationExp * 10000) / assets > maxLocationExposureBps) {
             revert LocationExposureTooHigh();
         }
 
-        // Update state
-        totalLocked += amount;
-        locationExposure[locationKey] += amount;
+        totalLocked += _amount;
+        locationExposure[_locationKey] += _amount;
 
-        emit CollateralLocked(amount, optionId);
-        emit LocationExposureUpdated(locationKey, newLocationExposure);
+        emit CollateralLocked(_optionId, _amount, _locationKey);
+        emit LocationExposureUpdated(_locationKey, newLocationExp);
 
         return true;
     }
 
-    function releaseCollateral(uint256 amount, uint256 payout, uint256 optionId, bytes32 locationKey)
+    function releaseCollateral(uint256 _amount, uint256 _payout, uint256 _optionId, bytes32 _locationKey)
         external
+        override
         onlyWeatherOptions
     {
-        require(amount >= payout, "Invalid amounts");
-        require(totalLocked >= amount, "Invalid locked amount");
-        require(locationExposure[locationKey] >= amount, "Invalid location exposure");
+        require(_amount >= _payout, "Invalid amounts");
+        require(totalLocked >= _amount, "Invalid locked amount");
+        require(locationExposure[_locationKey] >= _amount, "Invalid location exposure");
 
-        // Update tracking
-        totalLocked -= amount;
-        totalPayouts += payout;
-        locationExposure[locationKey] -= amount;
+        totalLocked -= _amount;
+        totalPayouts += _payout;
+        locationExposure[_locationKey] -= _amount;
 
-        // Transfer WETH payout to WeatherOptions contract
-        if (payout > 0) {
-            weth.safeTransfer(msg.sender, payout);
+        if (_payout > 0) {
+            weth.safeTransfer(msg.sender, _payout);
         }
 
-        emit CollateralReleased(amount, optionId);
-        emit PayoutMade(payout, optionId);
-        emit LocationExposureUpdated(locationKey, locationExposure[locationKey]);
+        emit CollateralReleased(_optionId, _amount, _payout, _locationKey);
+        emit LocationExposureUpdated(_locationKey, locationExposure[_locationKey]);
     }
 
-    function receivePremium(uint256 amount, uint256 optionId) external onlyWeatherOptions {
-        totalPremiumsEarned += amount;
-        emit PremiumReceived(amount, optionId);
+    /**
+     * @notice Receive premium WETH from Bruma and route reinsurance yield slice.
+     *
+     * ROUTING:
+     *   yieldSlice  = _amount * reinsuranceYieldBps / 10000  → weth.safeTransfer to pool
+     *   vaultShare  = _amount - yieldSlice                   → stays here as LP yield
+     *
+     * WETH has already been transferred to this contract by Bruma._handlePayments()
+     * before this call. No token pull happens here — only a push to the pool.
+     *
+     * INACTIVE STATE (default):
+     *   reinsurancePool == address(0) OR reinsuranceYieldBps == 0
+     *   → yieldSlice = 0, full amount books to totalPremiumsEarned.
+     *   Identical to pre-reinsurance behavior.
+     */
+    function receivePremium(uint256 _amount, uint256 _optionId) external override onlyWeatherOptions {
+        if (_amount == 0) revert ZeroAmount();
+
+        uint256 yieldSlice;
+        address pool = reinsurancePool;
+
+        if (pool != address(0) && reinsuranceYieldBps > 0) {
+            yieldSlice = (_amount * reinsuranceYieldBps) / 10000;
+            if (yieldSlice > 0) {
+                weth.safeTransfer(pool, yieldSlice);
+                emit ReinsuranceYieldRouted(_optionId, yieldSlice);
+            }
+        }
+
+        totalPremiumsEarned += _amount - yieldSlice;
+        emit PremiumReceived(_optionId, _amount - yieldSlice);
     }
 
     /*//////////////////////////////////////////////////////////////
-                    VIEW FUNCTIONS
+                          VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    function availableLiquidity() public view returns (uint256) {
+    function totalAssets() public view virtual override returns (uint256) {
+        return weth.balanceOf(address(this));
+    }
+
+    function availableLiquidity() public view override returns (uint256) {
         uint256 assets = totalAssets();
         if (totalLocked >= assets) return 0;
 
@@ -203,112 +275,98 @@ contract BrumaVault is ERC4626, Ownable, ReentrancyGuard {
         if (totalLocked + available > maxLockable) {
             return maxLockable > totalLocked ? maxLockable - totalLocked : 0;
         }
-
         return available;
     }
 
-    function utilizationRate() public view returns (uint256) {
+    function utilizationRate() public view override returns (uint256) {
         uint256 assets = totalAssets();
         if (assets == 0) return 0;
         return (totalLocked * 10000) / assets;
     }
 
-    function canUnderwrite(uint256 amount, bytes32 locationKey) external view returns (bool) {
-        if (amount > availableLiquidity()) return false;
+    function canUnderwrite(uint256 _amount, bytes32 _locationKey) external view override returns (bool) {
+        if (_amount > availableLiquidity()) return false;
 
         uint256 assets = totalAssets();
         if (assets == 0) return false;
 
-        uint256 newUtil = ((totalLocked + amount) * 10000) / assets;
-        if (newUtil > maxUtilizationBps) return false;
+        if (((totalLocked + _amount) * 10000) / assets > maxUtilizationBps) return false;
 
-        uint256 newLocationExp = (locationExposure[locationKey] + amount) * 10000 / assets;
-        if (newLocationExp > maxLocationExposureBps) return false;
+        if ((locationExposure[_locationKey] + _amount) * 10000 / assets > maxLocationExposureBps) {
+            return false;
+        }
 
         return true;
     }
 
-    function getMetrics()
-        external
-        view
-        returns (
-            uint256 tvl,
-            uint256 locked,
-            uint256 available,
-            uint256 utilization,
-            uint256 premiums,
-            uint256 payouts,
-            int256 netPnL
-        )
-    {
-        tvl = totalAssets();
-        locked = totalLocked;
-        available = availableLiquidity();
-        utilization = utilizationRate();
-        premiums = totalPremiumsEarned;
-        payouts = totalPayouts;
-        netPnL = int256(premiums) - int256(payouts);
-    }
-
-    function getPremiumMultiplier() public view returns (uint256 multiplierBps) {
+    function getPremiumMultiplier() public view override returns (uint256) {
         uint256 util = utilizationRate();
-
         if (util <= targetUtilizationBps) {
             return 10000;
         } else if (util <= maxUtilizationBps) {
-            uint256 excessUtil = util - targetUtilizationBps;
-            uint256 utilRange = maxUtilizationBps - targetUtilizationBps;
-            return 10000 + (excessUtil * 10000) / utilRange;
+            uint256 excess = util - targetUtilizationBps;
+            uint256 range = maxUtilizationBps - targetUtilizationBps;
+            return 10000 + (excess * 10000) / range;
         } else {
-            return 25000;
+            return 25000; // hard cap multiplier above max utilization
         }
     }
 
-    /*//////////////////////////////////////////////////////////////
-                    ERC-4626 OVERRIDES
-    //////////////////////////////////////////////////////////////*/
-
-    function totalAssets() public view virtual override returns (uint256) {
-        return weth.balanceOf(address(this));
+    /// @inheritdoc IBrumaVault
+    function getMetrics() external view override returns (VaultMetrics memory) {
+        uint256 premiums = totalPremiumsEarned;
+        uint256 payouts = totalPayouts;
+        return VaultMetrics({
+            tvl: totalAssets(),
+            locked: totalLocked,
+            available: availableLiquidity(),
+            utilizationBps: utilizationRate(),
+            premiumsEarned: premiums,
+            totalPayouts: payouts,
+            netPnL: int256(premiums) - int256(payouts),
+            reinsuranceReceived: totalReinsuranceReceived
+        });
     }
 
-    function maxWithdraw(address owner) public view virtual override returns (uint256) {
-        uint256 shares = balanceOf(owner);
-        uint256 totalShares = totalSupply();
+    /*//////////////////////////////////////////////////////////////
+                        ERC-4626 OVERRIDES
+    //////////////////////////////////////////////////////////////*/
 
+    function maxWithdraw(address _owner) public view virtual override returns (uint256) {
+        uint256 shares = balanceOf(_owner);
+        uint256 totalShares = totalSupply();
         if (shares == 0 || totalShares == 0) return 0;
 
-        uint256 totalAssets_ = totalAssets();
-        uint256 available = totalAssets_ > totalLocked ? totalAssets_ - totalLocked : 0;
-
-        // User can withdraw their proportional share of available liquidity
+        uint256 assets = totalAssets();
+        uint256 available = assets > totalLocked ? assets - totalLocked : 0;
         return (available * shares) / totalShares;
     }
 
-    function maxRedeem(address owner) public view virtual override returns (uint256) {
-        uint256 maxAssets = maxWithdraw(owner);
-        return convertToShares(maxAssets);
+    function maxRedeem(address _owner) public view virtual override returns (uint256) {
+        return convertToShares(maxWithdraw(_owner));
     }
 
-    /**
-     * @dev Override to add zero-amount checks
-     */
-    function deposit(uint256 assets, address receiver) public virtual override returns (uint256) {
-        if (assets == 0) revert ZeroAmount();
-        return super.deposit(assets, receiver);
+    function deposit(uint256 _assets, address _receiver) public virtual override returns (uint256) {
+        if (_assets == 0) revert ZeroAmount();
+        return super.deposit(_assets, _receiver);
     }
 
-    function mint(uint256 shares, address receiver) public virtual override returns (uint256) {
-        if (shares == 0) revert ZeroAmount();
-        return super.mint(shares, receiver);
+    function mint(uint256 _shares, address _receiver) public virtual override returns (uint256) {
+        if (_shares == 0) revert ZeroAmount();
+        return super.mint(_shares, _receiver);
     }
 
     /*//////////////////////////////////////////////////////////////
-                    MODIFIERS
+                            MODIFIERS
     //////////////////////////////////////////////////////////////*/
 
     modifier onlyWeatherOptions() {
         if (msg.sender != weatherOptions) revert UnauthorizedCaller();
+        _;
+    }
+
+    modifier onlyGuardian() {
+        if (msg.sender != guardian) revert UnauthorizedGuardian();
         _;
     }
 }

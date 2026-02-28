@@ -44,10 +44,10 @@ contract BrumaCCIPReceiver is CCIPReceiver, Ownable, ReentrancyGuard {
 
     struct PayoutReceipt {
         bytes32 ccipMessageId;
-        address sourceEscrow;    // BrumaCCIPEscrow that sent this
-        uint256 tokenId;         // Bruma option token ID on Ethereum
-        address recipient;       // Who received the payout on this chain
-        uint256 amount;          // WETH amount received
+        address sourceEscrow; // BrumaCCIPEscrow that sent this
+        uint256 tokenId; // Bruma option token ID on Ethereum
+        address recipient; // Who received the payout on this chain
+        uint256 amount; // WETH amount received
         uint256 timestamp;
     }
 
@@ -91,30 +91,15 @@ contract BrumaCCIPReceiver is CCIPReceiver, Ownable, ReentrancyGuard {
         uint256 amount
     );
 
-    event PayoutForwarded(
-        address indexed recipient,
-        uint256 amount
-    );
+    event PayoutForwarded(address indexed recipient, uint256 amount);
 
-    event PayoutPending(
-        address indexed recipient,
-        uint256 amount,
-        string reason
-    );
+    event PayoutPending(address indexed recipient, uint256 amount, string reason);
 
-    event PendingWithdrawn(
-        address indexed recipient,
-        uint256 amount
-    );
+    event PendingWithdrawn(address indexed recipient, uint256 amount);
 
-    event SenderRegistered(
-        address indexed escrow,
-        address indexed recipient
-    );
+    event SenderRegistered(address indexed escrow, address indexed recipient);
 
-    event SenderRevoked(
-        address indexed escrow
-    );
+    event SenderRevoked(address indexed escrow);
 
     /*//////////////////////////////////////////////////////////////
                               ERRORS
@@ -137,18 +122,14 @@ contract BrumaCCIPReceiver is CCIPReceiver, Ownable, ReentrancyGuard {
      * @param _weth                 WETH (bridged) token address on this chain
      * @param _sourceChainSelector  CCIP selector for the Ethereum source chain
      */
-    constructor(
-        address _ccipRouter,
-        address _weth,
-        uint64  _sourceChainSelector
-    )
+    constructor(address _ccipRouter, address _weth, uint64 _sourceChainSelector)
         CCIPReceiver(_ccipRouter)
         Ownable(msg.sender)
     {
-        require(_weth != address(0),              "Invalid weth");
-        require(_sourceChainSelector != 0,        "Invalid source chain");
+        require(_weth != address(0), "Invalid weth");
+        require(_sourceChainSelector != 0, "Invalid source chain");
 
-        weth                = IERC20(_weth);
+        weth = IERC20(_weth);
         sourceChainSelector = _sourceChainSelector;
     }
 
@@ -167,11 +148,11 @@ contract BrumaCCIPReceiver is CCIPReceiver, Ownable, ReentrancyGuard {
      * @param recipient  The buyer's address on this chain who receives payouts
      */
     function registerSender(address escrow, address recipient) external onlyOwner {
-        require(escrow != address(0),    "Invalid escrow");
+        require(escrow != address(0), "Invalid escrow");
         if (recipient == address(0)) revert ZeroRecipient();
 
         escrowToRecipient[escrow] = recipient;
-        isAllowedSender[escrow]   = true;
+        isAllowedSender[escrow] = true;
 
         emit SenderRegistered(escrow, recipient);
     }
@@ -180,15 +161,12 @@ contract BrumaCCIPReceiver is CCIPReceiver, Ownable, ReentrancyGuard {
      * @notice Register multiple senders in one call.
      * @dev Gas-efficient batch registration for initial setup.
      */
-    function registerSenderBatch(
-        address[] calldata escrows,
-        address[] calldata recipients
-    ) external onlyOwner {
+    function registerSenderBatch(address[] calldata escrows, address[] calldata recipients) external onlyOwner {
         require(escrows.length == recipients.length, "Length mismatch");
         for (uint256 i = 0; i < escrows.length; i++) {
             if (recipients[i] == address(0)) revert ZeroRecipient();
             escrowToRecipient[escrows[i]] = recipients[i];
-            isAllowedSender[escrows[i]]   = true;
+            isAllowedSender[escrows[i]] = true;
             emit SenderRegistered(escrows[i], recipients[i]);
         }
     }
@@ -197,7 +175,7 @@ contract BrumaCCIPReceiver is CCIPReceiver, Ownable, ReentrancyGuard {
      * @notice Revoke a sender's permission (e.g. compromised escrow).
      */
     function revokeSender(address escrow) external onlyOwner {
-        isAllowedSender[escrow]   = false;
+        isAllowedSender[escrow] = false;
         escrowToRecipient[escrow] = address(0);
         emit SenderRevoked(escrow);
     }
@@ -212,10 +190,7 @@ contract BrumaCCIPReceiver is CCIPReceiver, Ownable, ReentrancyGuard {
      *      Never reverts (would cause CCIP to retry indefinitely) — failed
      *      forwards fall back to pendingWithdrawals.
      */
-    function _ccipReceive(
-        Client.Any2EVMMessage memory message
-    ) internal override nonReentrant {
-
+    function _ccipReceive(Client.Any2EVMMessage memory message) internal override nonReentrant {
         // ── Validate source chain ──────────────────────────────────────────────
         if (message.sourceChainSelector != sourceChainSelector) {
             revert UnauthorizedSourceChain(message.sourceChainSelector);
@@ -240,25 +215,19 @@ contract BrumaCCIPReceiver is CCIPReceiver, Ownable, ReentrancyGuard {
             revert UnexpectedToken(tokenAmount.token);
         }
 
-        uint256 amount    = tokenAmount.amount;
+        uint256 amount = tokenAmount.amount;
         address recipient = escrowToRecipient[sourceEscrow];
 
-        emit PayoutReceived(
-            message.messageId,
-            tokenId,
-            recipient,
-            sourceEscrow,
-            amount
-        );
+        emit PayoutReceived(message.messageId, tokenId, recipient, sourceEscrow, amount);
 
         // ── Store receipt ──────────────────────────────────────────────────────
         receipts[message.messageId] = PayoutReceipt({
             ccipMessageId: message.messageId,
-            sourceEscrow:  sourceEscrow,
-            tokenId:       tokenId,
-            recipient:     recipient,
-            amount:        amount,
-            timestamp:     block.timestamp
+            sourceEscrow: sourceEscrow,
+            tokenId: tokenId,
+            recipient: recipient,
+            amount: amount,
+            timestamp: block.timestamp
         });
         receiptsByRecipient[recipient].push(message.messageId);
 
@@ -310,22 +279,14 @@ contract BrumaCCIPReceiver is CCIPReceiver, Ownable, ReentrancyGuard {
      * @notice Get all payout receipt IDs for a recipient.
      * @dev Frontend uses this to show payout history.
      */
-    function getReceiptIds(address recipient)
-        external
-        view
-        returns (bytes32[] memory)
-    {
+    function getReceiptIds(address recipient) external view returns (bytes32[] memory) {
         return receiptsByRecipient[recipient];
     }
 
     /**
      * @notice Get full receipt for a CCIP message ID.
      */
-    function getReceipt(bytes32 messageId)
-        external
-        view
-        returns (PayoutReceipt memory)
-    {
+    function getReceipt(bytes32 messageId) external view returns (PayoutReceipt memory) {
         return receipts[messageId];
     }
 
@@ -333,11 +294,7 @@ contract BrumaCCIPReceiver is CCIPReceiver, Ownable, ReentrancyGuard {
      * @notice Get all full receipts for a recipient in one call.
      * @dev Convenience function for frontend — avoid for large receipt counts.
      */
-    function getReceiptsForRecipient(address recipient)
-        external
-        view
-        returns (PayoutReceipt[] memory)
-    {
+    function getReceiptsForRecipient(address recipient) external view returns (PayoutReceipt[] memory) {
         bytes32[] memory ids = receiptsByRecipient[recipient];
         PayoutReceipt[] memory result = new PayoutReceipt[](ids.length);
         for (uint256 i = 0; i < ids.length; i++) {

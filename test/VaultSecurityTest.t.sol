@@ -5,6 +5,7 @@ import "forge-std/Test.sol";
 import {BrumaVault} from "../src/BrumaVault.sol";
 import {WETH9} from "./mocks/WETH9.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IBrumaVault} from "../src/interface/IBrumaVault.sol";
 
 /**
  * @title VaultAdversarialTest (FINAL FIXED VERSION)
@@ -207,7 +208,7 @@ contract VaultAdversarialTest is Test {
         bytes32 locationKey = keccak256(abi.encodePacked("10.0", "-75.0"));
 
         vm.prank(weatherOptions);
-        vm.expectRevert(BrumaVault.LocationExposureTooHigh.selector);
+        vm.expectRevert(IBrumaVault.LocationExposureTooHigh.selector);
         vault.lockCollateral(21 ether, 1, locationKey);
 
         vm.prank(weatherOptions);
@@ -239,7 +240,7 @@ contract VaultAdversarialTest is Test {
 
         bytes32 locationKey5 = keccak256(abi.encodePacked("50.0", "-95.0"));
         vm.prank(weatherOptions);
-        vm.expectRevert(BrumaVault.UtilizationTooHigh.selector);
+        vm.expectRevert(IBrumaVault.UtilizationTooHigh.selector);
         vault.lockCollateral(1 ether, 5, locationKey5);
     }
 
@@ -267,7 +268,10 @@ contract VaultAdversarialTest is Test {
         vm.prank(weatherOptions);
         vault.releaseCollateral(10 ether, 6 ether, 1, locationKey);
 
-        (,,,, uint256 premiums, uint256 payouts, int256 netPnL) = vault.getMetrics();
+        IBrumaVault.VaultMetrics memory m = vault.getMetrics();
+        uint256 premiums = m.premiumsEarned;
+        uint256 payouts = m.totalPayouts;
+        int256 netPnL = m.netPnL;
 
         assertEq(premiums, 1 ether, "Premiums should be 1 WETH");
         assertEq(payouts, 6 ether, "Payouts should be 6 WETH");
@@ -294,7 +298,7 @@ contract VaultAdversarialTest is Test {
         assertEq(vault.totalLocked(), 20 ether, "Total locked should be 20 WETH");
 
         vm.prank(weatherOptions);
-        vm.expectRevert(BrumaVault.LocationExposureTooHigh.selector);
+        vm.expectRevert(IBrumaVault.LocationExposureTooHigh.selector);
         vault.lockCollateral(1 ether, 5, locationKey);
 
         vm.prank(weatherOptions);

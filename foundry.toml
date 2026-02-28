@@ -6,6 +6,7 @@ libs = ["lib"]
 optimizer = true
 optimizer_runs = 200
 evm_version = "cancun"
+no_match_coverage = "script/|test/mocks/|test/BrumaAdversarialTest|test/VaultAdversarialTest|test/ReinsuranceVaultTest"
 
 remappings = [
   "@chainlink/contracts-ccip/=lib/chainlink-ccip/chains/evm/contracts/",
@@ -13,3 +14,6 @@ remappings = [
   "@openzeppelin/contracts@5.0.2/=lib/openzeppelin-contracts/contracts/",
   "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/",
 ]
+
+[profile.fork]
+eth_rpc_url = "${SEPOLIA_RPC}"
