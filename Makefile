@@ -9,7 +9,7 @@
 export
 
 # ── Required env vars ────────────────────────────────────────
-RPC          ?= https://eth-sepolia.g.alchemy.com/v2/8rnTBOrmLgFWnn-IAsFxK
+RPC          ?= https://eth-sepolia.g.alchemy.com/v2/your-api-here
 ACCOUNT      ?= rainfall-deployer
 ETHERSCAN_KEY ?= SH6TUFNGYM3S2PE9I6C8NJH6WHF7A9P2ZB
 DEPLOYER     ?= 0xc022d2263835D14D5AcA7E3f45ADA019D1E23D9e
