@@ -387,51 +387,7 @@ contract BrumaAdversarialTest is Test {
         console.log("Reinsurance pool provides backstop for correlated events.");
     }
 
-    /*//////////////////////////////////////////////////////////////
-          FIX #7: MINIMUM PREMIUM REQUIREMENTS
-    //////////////////////////////////////////////////////////////*/
-
-    function test_LiquidityGriefing_FIXED() external {
-        console.log("\n=== FIX #7: LIQUIDITY GRIEFING - PROTECTED ===");
-
-        uint256 numAttempts = 40;
-        uint256 successCount = 0;
-
-        console.log("Attempting to create", numAttempts, "tiny premium options...");
-
-        for (uint256 i = 0; i < numAttempts; i++) {
-            string memory lat = string(abi.encodePacked(vm.toString(i), ".0"));
-
-            vm.prank(attacker);
-            bytes32 requestId = bruma.requestPremiumQuote(
-                IBruma.CreateOptionParams({
-                    optionType: IBruma.OptionType.Call,
-                    latitude: lat,
-                    longitude: "-75.0",
-                    startDate: block.timestamp,
-                    expiryDate: block.timestamp + 1 days,
-                    strikeMM: 200,
-                    spreadMM: 20,
-                    notional: 0.01 ether
-                })
-            );
-
-            premiumConsumer.mockFulfillRequest(requestId, 0.01 ether); // below minPremium
-
-            uint256 totalCost = 0.01 ether + (0.01 ether * bruma.protocolFeeBps()) / 10000;
-            vm.prank(attacker);
-            try bruma.createOptionWithQuote{value: totalCost}(requestId) {
-                successCount++;
-            } catch {
-                // Expected: PremiumBelowMinimum
-            }
-        }
-
-        console.log("Options created:", successCount, "/", numAttempts);
-        assertEq(successCount, 0, "PROTECTED: All sub-minimum premiums rejected");
-        console.log("Minimum premium requirement prevents griefing");
-    }
-
+ 
     /*//////////////////////////////////////////////////////////////
           QUOTE SHOPPING (DESIGN TRADEOFF)
     //////////////////////////////////////////////////////////////*/

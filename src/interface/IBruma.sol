@@ -170,6 +170,8 @@ interface IBruma {
     event MinimumRequirementsUpdated(uint256 minPremium, uint256 minNotional);
     event AutoClaimToggled(bool enabled);
     event AutoClaimFailed(uint256 indexed tokenId, bytes reason);
+    event MinDailyStrikeMMUpdated(uint256 newMinDailyStrikeMM); // updates the strike floor so there is no call with strike zero
+    event MaxDailyStrikeMMUpdated(uint256 newMaxDailyStrikeMM);
 
     /*//////////////////////////////////////////////////////////////
                                ERRORS
@@ -195,6 +197,8 @@ interface IBruma {
     error PremiumBelowMinimum();
     error NotionalBelowMinimum();
     error NotBeneficiary();
+    error InvalidStrike();
+    error StrikeTooHigh();
 
     /*//////////////////////////////////////////////////////////////
                          STRUCTS

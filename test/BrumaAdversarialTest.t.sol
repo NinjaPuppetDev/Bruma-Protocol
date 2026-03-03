@@ -368,7 +368,7 @@ contract BrumaAdversarialTest is Test {
                     longitude: "-75.0",
                     startDate: block.timestamp,
                     expiryDate: block.timestamp + 1 days,
-                    strikeMM: 200,
+                    strikeMM: 10,
                     spreadMM: 20,
                     notional: 0.01 ether
                 })

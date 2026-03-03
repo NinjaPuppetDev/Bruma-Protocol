@@ -126,6 +126,16 @@ which payout begins. A call with `strikeMM = 50` starts paying when oracle rainf
 exceeds 50 mm. A put with the same strike starts paying when rainfall falls below it.
 No payout is owed on the wrong side of the strike regardless of how far rainfall moves.
 
+Strike is bounded at creation time by a duration-adjusted floor and ceiling:
+
+```
+minDailyStrikeMM × durationDays  ≤  strikeMM  ≤  maxDailyStrikeMM × durationDays
+```
+
+This ensures Calls cannot be structured as near-certain payouts (floor) and Puts cannot
+be structured as near-certain payouts via an astronomically high strike (ceiling). See
+[Strike Bounds](#strike-bounds) for full details.
+
 ### Spread (`spreadMM`)
 
 The range in millimeters over which the payout scales linearly from zero to its maximum.
@@ -189,16 +199,49 @@ scaling linearly through the spread zone, and flat at maximum beyond it.
 ```
 CALL payout                        PUT payout
     |                                  |
-max ─────────╔══════             max ══════╗─────────
+max ─────────╔══════             max ══════╗───────── 
     |        ╱                        |        ╲
     |       ╱                         |         ╲
-  0 ───────╱──────────            ────────────────╲──
+  1 ───────╱──────────            ────────────────╲──
          strike  strike+spread    strike-spread  strike
 ```
 
 This structure gives position holders a bounded, deterministic payout that is known
 at entry — no slippage, no counterparty discretion, no basis risk beyond the
 oracle index itself.
+
+---
+
+## Strike Bounds
+
+Both option types — Call and Put — can be exploited if `strikeMM` is set to an
+actuarially absurd value. The protocol enforces a duration-adjusted valid range:
+
+```
+minDailyStrikeMM × durationDays  ≤  strikeMM  ≤  maxDailyStrikeMM × durationDays
+```
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `minDailyStrikeMM` | 1 mm/day | Floor: 30-day option requires strike ≥ 30 mm |
+| `maxDailyStrikeMM` | 50 mm/day | Ceiling: 30-day option requires strike ≤ 1500 mm |
+
+**Why a floor (protects against Call exploit):**
+A `Call` with `strikeMM = 0` pays out on any measurable rainfall at all. In any
+non-arid location over a multi-day window, this is near-certain. The floor ensures
+the strike is always above the baseline rainfall of even the world's driest inhabited
+regions (~2–4 mm/month).
+
+**Why a ceiling (protects against Put exploit):**
+A `Put` with `strikeMM = 10000` (10 meters) pays out unless it rains 10 meters —
+which never happens anywhere on Earth. This is the mirror image of the Call exploit:
+a near-guaranteed payout extracted from the vault at a bounded premium cost. The
+ceiling of 50 mm/day is above the wettest sustained averages on Earth (~25–30 mm/day
+in places like Cherrapunji, India or Chocó, Colombia), giving legitimate hedgers
+ample range while making a guaranteed-payout Put impossible to construct.
+
+Both bounds are owner-configurable via `setMinDailyStrikeMM()` and
+`setMaxDailyStrikeMM()` to allow tuning as the protocol expands to new geographies.
 
 ---
 
@@ -334,9 +377,7 @@ against live Sepolia deployments:
 
 **Risk Guardian with ReinsurancePool + Confidential HTTP + Groq:**
 ```
-
 2026-02-28T18:18:32Z [SIMULATION] Simulator Initialized
-
 2026-02-28T18:18:32Z [SIMULATION] Running trigger trigger=cron-trigger@1.0.0
 2026-02-28T18:18:32Z [USER LOG] === Bruma Vault Risk Guardian triggered ===
 2026-02-28T18:18:32Z [USER LOG] Vault: TVL=1753151250000000000 | Utilization=14.26% | NetPnL=253151250000000000
@@ -344,14 +385,15 @@ against live Sepolia deployments:
 2026-02-28T18:18:33Z [USER LOG] TokenId 0 [6.25,-75.56]: forecast = 75.0mm over 7 days
 2026-02-28T18:18:33Z [USER LOG] Expected loss across 1 options: 250000000000000000 wei | Auto-settled: 0
 2026-02-28T18:18:34Z [USER LOG] Expected loss: 14.26% of TVL | Alert threshold: 70%
-2026-02-28T18:18:34Z [USER LOG] Vault healthy. Utilization: 14.26%. Expected loss: 14.26% of TVL. CCIP bridges triggered: 0. Options auto-settled: 0. No vault action needed.
-2026-02-28T18:18:38Z [USER LOG] Groq risk summary: The vault holds 1.7532 ETH with current utilization at 14.26%, well below the 70% alert threshold (≈1.23 ETH). The forecasted loss equals 14.26% of TVL, i.e., about **0.25 ETH**, which exceeds the reinsurance pool capacity of 0.0907 ETH, but the vault's net PnL is positive (+0.2532 ETH), providing a buffer. Overall risk is moderate: utilization is low, the loss estimate is covered by the vault's own surplus, and no reinsurance drawdown has been triggered.
+2026-02-28T18:18:34Z [USER LOG] Vault healthy. No vault action needed.
+2026-02-28T18:18:38Z [USER LOG] Groq risk summary: The vault holds 1.7532 ETH with current utilization
+                                at 14.26%, well below the 70% alert threshold. The forecasted loss equals
+                                14.26% of TVL (~0.25 ETH), which exceeds the reinsurance pool capacity of
+                                0.0907 ETH, but the vault net PnL is positive (+0.2532 ETH), providing a
+                                buffer. Overall risk is moderate: no reinsurance drawdown triggered.
 
-✓ Workflow Simulation Result:
-"Vault healthy. Utilization: 14.26%. Expected loss: 14.26% of TVL. CCIP bridges triggered: 0. Options auto-settled: 0. No vault action needed.\n\nSummary: The vault holds 1.7532 ETH with current utilization at 14.26%, well below the 70% alert threshold (≈1.23 ETH). The forecasted loss equals 14.26% of TVL, i.e., about **0.25 ETH**, which exceeds the reinsurance pool capacity of 0.0907 ETH, but the vault's net PnL is positive (+0.2532 ETH), providing a buffer. Overall risk is moderate: utilization is low, the loss estimate is covered by the vault's own surplus, and no reinsurance drawdown has been triggered."
-
-2026-02-28T18:18:38Z [SIMULATION] Execution finished signal received
-2026-02-28T18:18:38Z [SIMULATION] Skipping WorkflowEngineV2
+✓ Workflow Simulation Result: Vault healthy. Utilization: 14.26%. CCIP bridges: 0. Options settled: 0.
+2026-02-28T18:18:38Z [SIMULATION] Execution finished
 ```
 
 ---
@@ -456,6 +498,57 @@ capital pool.
 This pattern applies to: DeFi structured products with NFT vault shares, prediction
 markets with ERC-721 positions, real-world asset protocols, and any parametric risk
 transfer protocol built on ERC-4626.
+
+---
+
+## Known Limitations
+
+### Near-guaranteed payout exploit via strike manipulation (deployed contract)
+
+The Sepolia deployment does not enforce bounds on `strikeMM`. This creates two
+symmetric exploits, one per option type:
+
+**Call exploit (zero or very low strike):**
+A `Call` with `strikeMM = 0` pays out on any measurable rainfall at all. The payout
+condition `actualRainfall > 0` is satisfied by virtually every non-arid location on
+any multi-day window. A buyer with geographic knowledge can construct a near-guaranteed
+payout — effectively using the vault as a bounded, certain-yield trade rather than a
+risk transfer instrument.
+
+**Put exploit (astronomically high strike):**
+The mirror image. A `Put` with `strikeMM = 10000` pays out unless it rains 10 meters,
+which never happens anywhere on Earth. A buyer simply picks any location, sets an
+absurd strike, and collects a near-guaranteed payout bounded by `spreadMM × notional`.
+
+**Why the premium calculator does not fully mitigate either:**
+`PremiumCalculatorConsumer` prices both positions correctly against 10 years of
+historical data — the premium for a zero-strike Call or a 10000mm Put will be high.
+However, a sophisticated buyer can accept that premium knowing the payout probability
+is near 1.0, making the trade a guaranteed yield extraction rather than a risk transfer.
+
+**Fix implemented in this repository (not redeployed):**
+`_validateParams` now enforces a duration-adjusted valid range for `strikeMM`:
+
+```solidity
+uint256 durationDays = (expiryDate - startDate) / 1 days;
+if (strikeMM < durationDays * minDailyStrikeMM) revert InvalidStrike();
+if (strikeMM > durationDays * maxDailyStrikeMM) revert StrikeTooHigh();
+```
+
+| Parameter | Default | Rationale |
+|---|---|---|
+| `minDailyStrikeMM` | 1 mm/day | Above baseline rainfall of Earth's driest inhabited regions (~2–4 mm/month) |
+| `maxDailyStrikeMM` | 50 mm/day | Above the wettest sustained averages on Earth (~25–30 mm/day) |
+
+For a 30-day option, the valid strike range is **[30 mm, 1500 mm]** — wide enough for
+any legitimate weather hedging use case, impossible to exploit for near-certain payouts
+in either direction. Both values are owner-configurable via `setMinDailyStrikeMM()` and
+`setMaxDailyStrikeMM()` to allow tuning as the protocol expands to new geographies.
+
+A more robust long-term solution would enforce strike bounds relative to
+location-specific historical averages sourced from the oracle at creation time — but
+this requires an additional Chainlink Functions call at quote time and is out of scope
+for this submission.
 
 ---
 
@@ -632,6 +725,11 @@ make active-options
 - **Groq API key is never stored in workflow code or node memory.** It is fetched by
   the Vault DON and injected inside a secure enclave via Confidential HTTP. Node
   operators are cryptographically prevented from accessing it.
+- **Strike bounds enforced at creation time.** `strikeMM` must satisfy
+  `durationDays × minDailyStrikeMM ≤ strikeMM ≤ durationDays × maxDailyStrikeMM`
+  (defaults: 1–50 mm/day). This prevents near-guaranteed payouts for both Calls
+  (via zero/low strike) and Puts (via astronomically high strike). See
+  [Known Limitations](#known-limitations) for deployed contract status.
 - **Smart contracts are unaudited.** A formal audit is required before any mainnet
   deployment with real capital.
 

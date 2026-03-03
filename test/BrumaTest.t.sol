@@ -188,13 +188,15 @@ contract BrumaIntegrationTest is Test {
     }
 
     function test_SettlementDatesUseCorrectDateTime() external {
+        // Duration: 2024-01-01 to 2024-04-01 = 91 days
+        // minDailyStrikeMM = 1mm/day → minimum strike = 91mm
         IBruma.CreateOptionParams memory p = IBruma.CreateOptionParams({
             optionType: IBruma.OptionType.Call,
             latitude: "10.0",
             longitude: "-75.0",
             startDate: 1_704_067_200, // 2024-01-01
             expiryDate: 1_711_929_600, // 2024-04-01
-            strikeMM: STRIKE,
+            strikeMM: 91, // ← was STRIKE (50), must be >= 91 for 91-day window
             spreadMM: SPREAD,
             notional: NOTIONAL
         });

@@ -44,9 +44,10 @@ import {
  *   - EnumerableSet for activeOptions  prevents Chainlink Automation DOS
  *   - Pull payment (pendingPayouts)    prevents malicious-contract DOS on settlement
  *   - Minimum premium + notional       reduces griefing profitability
+ *   - Minimum daily strike (mm/day)    prevents near-guaranteed Call payouts in rainy regions
  *
  * ROLES:
- *   owner   — protocol config (fee, vault, min requirements, auto-claim toggle)
+ *   owner   — protocol config (fee, vault, min requirements, auto-claim toggle, min daily strike)
  *   anyone  — requestSettlement / settle (permissionless after expiry/oracle fulfillment)
  *   buyer   — requestPremiumQuote / createOptionWithQuote / claimPayout
  */
@@ -104,6 +105,18 @@ contract Bruma is IBruma, ERC721URIStorage, Ownable, ReentrancyGuard {
     uint256 public override minNotional = 0.01 ether;
     bool public override autoClaimEnabled = true;
 
+    // ── Strike floor ──────────────────────────────────────────────────────────
+    /// @notice Minimum strike in mm per day of option duration.
+    /// @dev    Prevents near-guaranteed Call payouts in high-rainfall regions.
+    ///         A zero-strike Call pays out on any rainfall at all; even a low
+    ///         strike (e.g. 1 mm) in a tropical location is near-certain.
+    ///         Enforced as: strikeMM >= durationDays * minDailyStrikeMM
+    ///         Default: 1 mm/day  →  30-day option requires ≥ 30 mm strike.
+    ///         Owner can tune this as the protocol expands to new geographies.
+    uint256 public minDailyStrikeMM = 1;
+    // Add a symmetric ceiling constant alongside minDailyStrikeMM
+    uint256 public maxDailyStrikeMM = 50; // 50mm/day → 30-day Put requires strike ≤ 1500mm
+
     // ── Constants ─────────────────────────────────────────────────────────────
     uint256 public constant QUOTE_VALIDITY = 1 hours;
     uint256 private constant MAX_PROTOCOL_FEE = 1000; // 10%
@@ -142,7 +155,7 @@ contract Bruma is IBruma, ERC721URIStorage, Ownable, ReentrancyGuard {
         nonReentrant
         returns (bytes32 requestId)
     {
-        _validateParams(p.startDate, p.expiryDate, p.spreadMM, p.notional);
+        _validateParams(p.startDate, p.expiryDate, p.strikeMM, p.spreadMM, p.notional);
 
         uint256 durationDays = (p.expiryDate - p.startDate) / 1 days;
 
@@ -446,6 +459,20 @@ contract Bruma is IBruma, ERC721URIStorage, Ownable, ReentrancyGuard {
         emit AutoClaimToggled(_enabled);
     }
 
+    /// @notice Update the minimum strike floor per day of option duration.
+    /// @dev    Increase for geographies with higher baseline rainfall;
+    ///         decrease only with strong actuarial justification.
+    ///         Example: minDailyStrikeMM = 2 → 30-day option requires ≥ 60 mm strike.
+    function setMinDailyStrikeMM(uint256 _minDailyStrikeMM) external onlyOwner {
+        minDailyStrikeMM = _minDailyStrikeMM;
+        emit MinDailyStrikeMMUpdated(_minDailyStrikeMM);
+    }
+
+    function setMaxDailyStrikeMM(uint256 _maxDailyStrikeMM) external onlyOwner {
+        maxDailyStrikeMM = _maxDailyStrikeMM;
+        emit MaxDailyStrikeMMUpdated(_maxDailyStrikeMM);
+    }
+
     function withdrawFees(address payable _to) external nonReentrant onlyOwner {
         uint256 amount = collectedFees;
         collectedFees = 0;
@@ -457,10 +484,26 @@ contract Bruma is IBruma, ERC721URIStorage, Ownable, ReentrancyGuard {
                        INTERNAL FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    function _validateParams(uint256 startDate, uint256 expiryDate, uint256 spreadMM, uint256 notional) internal view {
+    /**
+     * @dev Validates option creation parameters.
+     *      Strike floor: strikeMM >= durationDays * minDailyStrikeMM
+     *      This prevents near-guaranteed Call payouts in high-rainfall regions
+     *      by ensuring the strike is always actuarially meaningful relative
+     *      to the option's duration.
+     */
+    function _validateParams(
+        uint256 startDate,
+        uint256 expiryDate,
+        uint256 strikeMM,
+        uint256 spreadMM,
+        uint256 notional
+    ) internal view {
         if (startDate < block.timestamp) revert InvalidDates();
         if (expiryDate <= block.timestamp) revert InvalidDates();
         if (expiryDate <= startDate) revert InvalidDates();
+        uint256 durationDays = (expiryDate - startDate) / 1 days;
+        if (strikeMM < durationDays * minDailyStrikeMM) revert InvalidStrike();
+        if (strikeMM > durationDays * maxDailyStrikeMM) revert StrikeTooHigh();
         if (spreadMM == 0) revert InvalidSpread();
         if (notional == 0) revert InvalidNotional();
         if (notional < minNotional) revert NotionalBelowMinimum();

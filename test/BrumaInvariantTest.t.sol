@@ -596,12 +596,16 @@ contract BrumaInvariantTest is Test {
     //////////////////////////////////////////////////////////////*/
 
     function testFuzz_PayoutNeverExceedsCollateral(uint256 rainfall, uint256 strike, uint256 spread) public {
-        strike = bound(strike, 1, 1000);
+        uint256 durationDays = 3;
+        uint256 minStrike = durationDays * bruma.minDailyStrikeMM();
+        uint256 maxStrike = durationDays * bruma.maxDailyStrikeMM();
+
+        strike = bound(strike, minStrike, maxStrike);
         spread = bound(spread, 1, 1000);
         rainfall = bound(rainfall, 0, 10000);
 
         uint256 mockPremium = (spread * NOTIONAL) / 10;
-        if (mockPremium < bruma.minPremium()) return; // skip sub-minimum cases
+        if (mockPremium < bruma.minPremium()) return;
 
         uint256 tokenId = _createOption(buyer1, NOTIONAL, strike, spread);
         uint256 maxPayout = spread * NOTIONAL;
