@@ -501,7 +501,7 @@ transfer protocol built on ERC-4626.
 
 ---
 
-## Known Limitations
+## Known Issues
 
 ### Near-guaranteed payout exploit via strike manipulation (deployed contract)
 
@@ -549,6 +549,23 @@ A more robust long-term solution would enforce strike bounds relative to
 location-specific historical averages sourced from the oracle at creation time — but
 this requires an additional Chainlink Functions call at quote time and is out of scope
 for this submission.
+
+### Premium calculator overflow on large notionals (deployed contract)
+
+The Sepolia deployment encodes the final premium as `Functions.encodeUint256(Number(premiumWei))`.
+JavaScript's `Number` type can only safely represent integers up to `2^53 − 1`. For notionals
+above roughly `0.01 ETH`, the multiplied `premiumWei` BigInt can exceed this limit, silently
+losing precision and returning a corrupted or zero premium quote.
+
+**Fix implemented in this repository (not redeployed):**
+The `Number()` cast is removed. The return is now:
+```solidity
+"return Functions.encodeUint256(premiumWei);"
+```
+
+`Functions.encodeUint256` accepts BigInt directly. The fix is one token — staying in
+BigInt throughout eliminates the precision loss entirely. Testnet demos with small
+notionals (~0.01 ETH) are unaffected, which is why this did not surface during testing.
 
 ---
 
@@ -729,7 +746,7 @@ make active-options
   `durationDays × minDailyStrikeMM ≤ strikeMM ≤ durationDays × maxDailyStrikeMM`
   (defaults: 1–50 mm/day). This prevents near-guaranteed payouts for both Calls
   (via zero/low strike) and Puts (via astronomically high strike). See
-  [Known Limitations](#known-limitations) for deployed contract status.
+  [Known Issues](#known-issues) for deployed contract status.
 - **Smart contracts are unaudited.** A formal audit is required before any mainnet
   deployment with real capital.
 

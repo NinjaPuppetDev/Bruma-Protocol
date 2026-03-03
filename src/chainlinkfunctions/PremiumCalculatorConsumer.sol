@@ -106,7 +106,7 @@ contract PremiumCalculatorConsumer is FunctionsClient, ConfirmedOwner {
         "let riskMultiplier = 150;" "if (periodSums.length < 1000) { riskMultiplier = 170; }"
         "if (periodSums.length < 500) { riskMultiplier = 200; }"
         "const premiumWei = (expectedPayoutWei * BigInt(riskMultiplier)) / 100n;"
-        "return Functions.encodeUint256(Number(premiumWei));";
+        "return Functions.encodeUint256(premiumWei);";
 
     /*//////////////////////////////////////////////////////////////
                               CONSTRUCTOR
