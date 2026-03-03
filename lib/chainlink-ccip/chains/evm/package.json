@@ -1,0 +1,49 @@
+{
+  "name": "@chainlink/contracts-ccip",
+  "version": "1.6.4",
+  "description": "Chainlink smart contracts for CCIP",
+  "author": "Chainlink devs",
+  "repository": "github:smartcontractkit/chainlink-ccip",
+  "license": "BUSL-1.1",
+  "private": false,
+  "scripts": {
+    "publish-beta": "pnpm publish --tag beta",
+    "publish-prod": "pnpm publish --tag latest",
+    "compile": "./scripts/compile_all",
+    "solhint": "solhint --max-warnings 0 \"./contracts/**/*.sol\"",
+    "solhint-test": "solhint --config \".solhint-test.json\"  --ignore-path \".solhintignore-test\" --max-warnings 0 \"./contracts/**/*.sol\""
+  },
+  "files": [
+    "foundry.toml",
+    "contracts/**/*.sol",
+    "contracts/LICENSE.md",
+    "contracts/v1.5-CCIP-License-grants.md",
+    "!contracts/test/**/*",
+    "contracts/test/mocks/**/*",
+    "contracts/test/helpers/**/*",
+    "scripts/compile_all",
+    "abi",
+    "bytecode",
+    "remappings.txt",
+    ".solhint.json",
+    ".solhint-test.json",
+    ".solhintignore",
+    ".solhintignore-test"
+  ],
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
+  },
+  "dependencies": {
+    "@chainlink/contracts": "1.5.0",
+    "@openzeppelin/contracts-4.8.3": "npm:@openzeppelin/contracts@4.8.3",
+    "@openzeppelin/contracts-5.0.2": "npm:@openzeppelin/contracts@5.0.2"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.8",
+    "@changesets/get-github-info": "^0.7.0",
+    "semver": "^7.7.3",
+    "solhint": "^6.0.2",
+    "solhint-plugin-chainlink-solidity": "github:smartcontractkit/chainlink-solhint-rules#v1.2.1"
+  }
+}
