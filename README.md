@@ -569,6 +569,34 @@ notionals (~0.01 ETH) are unaffected, which is why this did not surface during t
 
 ---
 
+## Formal Verification
+
+Critical payout properties are formally verified using the [Certora Prover](https://www.certora.com/).
+Specs live in `certora/specs/`, configurations in `certora/confs/`.
+
+### Verified properties (`BrumaPayouts.spec`)
+
+| Rule | Property |
+|---|---|
+| `noDoubleClaim` | `claimPayout` reverts when `pendingPayouts[tokenId] == 0` |
+| `onlyBeneficiaryClaims` | Any caller other than `ownerAtSettlement` is rejected |
+| `ownerAtSettlementImmutableAfterSet` | `settle()` and `claimPayout()` cannot overwrite the recorded beneficiary |
+| `requestSettlementSetsOwner` | `requestSettlement()` always snapshots `ownerOf(tokenId)` into `ownerAtSettlement` |
+
+### Verification scope and tooling split
+
+The prover targets `Bruma.sol` with `BrumaVault` and a `WETH9` mock linked. Chainlink oracle calls are summarized as `NONDET` — the prover explores all possible oracle return values, making the payout rules oracle-agnostic.
+
+State machine transitions (`Active → Settling → Settled`) and the transfer lock during settlement are covered by the Foundry invariant and fuzz suite rather than Certora, due to limitations with inherited OpenZeppelin storage models in the prover.
+```bash
+# Run from project root
+certoraRun certora/confs/bruma.conf
+```
+
+> Requires a [Certora API key](https://www.certora.com/).
+
+---
+
 ## Chainlink Integration Summary
 
 | File | Chainlink Service | Usage |

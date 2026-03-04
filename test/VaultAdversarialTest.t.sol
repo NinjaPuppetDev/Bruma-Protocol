@@ -387,7 +387,6 @@ contract BrumaAdversarialTest is Test {
         console.log("Reinsurance pool provides backstop for correlated events.");
     }
 
- 
     /*//////////////////////////////////////////////////////////////
           QUOTE SHOPPING (DESIGN TRADEOFF)
     //////////////////////////////////////////////////////////////*/

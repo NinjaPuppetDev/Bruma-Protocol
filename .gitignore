@@ -13,9 +13,9 @@ docs/
 # Dotenv file
 .env
 
-# Certora
+# Certora — keep specs and confs, ignore prover cache
 .certora_internal/
-certora/
+certora/.certora_cache/
 
 # Frontend
 weather-options-frontend/
