@@ -67,9 +67,8 @@ rule noDoubleClaim(uint256 tokenId) {
 }
 
 
-
 /*//////////////////////////////////////////////////////////////
-         RULE 3 — ONLY BENEFICIARY CAN CLAIM
+         RULE 2 — ONLY BENEFICIARY CAN CLAIM
 //////////////////////////////////////////////////////////////*/
 rule onlyBeneficiaryClaims(uint256 tokenId) {
     env e;
@@ -87,7 +86,7 @@ rule onlyBeneficiaryClaims(uint256 tokenId) {
 }
 
 /*//////////////////////////////////////////////////////////////
-         RULE 4 — ownerAtSettlement IS IMMUTABLE ONCE SET
+         RULE 3 — ownerAtSettlement IS IMMUTABLE ONCE SET
 //////////////////////////////////////////////////////////////
  Key fix: split into two sub-rules instead of one parametric.
  - For settle() and claimPayout(): ownerAtSettlement is already
