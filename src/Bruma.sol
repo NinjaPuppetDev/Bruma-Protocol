@@ -614,10 +614,6 @@ contract Bruma is IBruma, ERC721URIStorage, Ownable, ReentrancyGuard {
         return from;
     }
 
-    function getOptionStatus(uint256 tokenId) external view returns (uint8) {
-        return uint8(options[tokenId].state.status);
-    }
-
     /// @dev Required so WETH.withdraw() can send ETH back to this contract.
     receive() external payable {}
 }
